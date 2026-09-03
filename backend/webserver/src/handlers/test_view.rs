@@ -40,10 +40,39 @@ pub async fn ws_run(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl
     })
 }
 
-pub async fn stop() -> (StatusCode, Json<serde_json::Value>) {
+#[derive(Debug, Deserialize)]
+pub struct StopRequest {
+    pub endpoint_id: String,
+    pub request_number: i32,
+}
+
+/// POST /test-view/stop
+///
+/// Cancels the app's own countdown timer for this test — the UI stops
+/// getting TimerTick/expects-a-result state for it, and a TimerCancelled
+/// event fires (same path the timer's own natural completion uses).
+///
+/// Honest limitation: this does NOT kill the actual in-flight HTTP call.
+/// That's already running in a separate, detached edms-child process by
+/// the time this is called, and nothing tracks a handle to it — so a slow
+/// or hanging request keeps running in the background regardless. This
+/// only stops the app from waiting on / reporting about it.
+pub async fn stop(
+    State(state): State<AppState>,
+    Json(payload): Json<StopRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let cancelled = state.cancel_timer(&payload.endpoint_id, payload.request_number);
     (
         StatusCode::OK,
-        Json(json!({ "ok": true, "message": "stop requested" })),
+        Json(json!({
+            "ok": true,
+            "timer_cancelled": cancelled,
+            "message": if cancelled {
+                "Timer stopped. Note: the underlying HTTP call may still complete in the background."
+            } else {
+                "No running timer found for that endpoint/request — it may have already finished."
+            }
+        })),
     )
 }
 
@@ -57,7 +86,7 @@ pub async fn save_history(
 
     let res = tokio::task::spawn_blocking({
         let st = state.clone();
-        move || db::insert_history(&st.core, &endpoint_id, &action, details.as_deref())
+        move || db::insert_history(&st.core, &st.queries, &endpoint_id, &action, details.as_deref())
     })
     .await;
 
@@ -65,7 +94,7 @@ pub async fn save_history(
         Ok(Ok(_)) => {
             let count = tokio::task::spawn_blocking({
                 let st = state.clone();
-                move || db::history_count(&st.core)
+                move || db::history_count(&st.core, &st.queries)
             })
             .await
             .unwrap_or(Ok(0))
@@ -94,7 +123,7 @@ pub async fn save_bookmark(
 
     let res = tokio::task::spawn_blocking({
         let st = state.clone();
-        move || db::insert_bookmark_active(&st.core, &endpoint_id, notes.as_deref())
+        move || db::insert_bookmark_active(&st.core, &st.queries, &endpoint_id, notes.as_deref())
     })
     .await;
 
@@ -102,12 +131,13 @@ pub async fn save_bookmark(
         Ok(Ok(_)) => {
             let count = tokio::task::spawn_blocking({
                 let st = state.clone();
-                move || db::bookmarks_count_active(&st.core)
+                move || db::bookmarks_count_active(&st.core, &st.queries)
             })
             .await
             .unwrap_or(Ok(0))
             .unwrap_or(0);
 
+            state.refresh_dashboard_snapshot();
             state.emit(ServerEvent::BookmarksUpdated { count }).await;
             (StatusCode::OK, Json(json!({ "ok": true, "bookmark_count": count })))
         }
@@ -145,7 +175,7 @@ pub async fn ws_delete_from_bookmark(
 pub async fn clear_history(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
     let res = tokio::task::spawn_blocking({
         let st = state.clone();
-        move || db::clear_history(&st.core)
+        move || db::clear_history(&st.core, &st.queries)
     })
     .await;
 
@@ -168,12 +198,13 @@ pub async fn clear_history(State(state): State<AppState>) -> (StatusCode, Json<s
 pub async fn clear_bookmarks(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
     let res = tokio::task::spawn_blocking({
         let st = state.clone();
-        move || db::clear_bookmarks_active(&st.core)
+        move || db::clear_bookmarks_active(&st.core, &st.queries)
     })
     .await;
 
     match res {
         Ok(Ok(_)) => {
+            state.refresh_dashboard_snapshot();
             state.emit(ServerEvent::BookmarksUpdated { count: 0 }).await;
             (StatusCode::OK, Json(json!({ "ok": true })))
         }
@@ -300,7 +331,10 @@ async fn run_test_impl(
 
     // 3) Insert request metadata into DB
     let method_upper = method.to_uppercase();
-    let request_file = format!("edms_data/{}/request-{:03}.json", endpoint_id, request_number);
+    // Must match the {eid}-request-{N}.json filename write_request_file
+    // actually produces (compute::endpoint_writer) — these two were out of
+    // sync before, meaning the file this points at didn't exist.
+    let request_file = format!("edms_data/{}/{}-request-{}.json", endpoint_id, endpoint_id, request_number);
 
     tokio::task::spawn_blocking({
         let st = state.clone();
@@ -332,13 +366,20 @@ async fn run_test_impl(
         request_number,
     });
 
-    // 6) Start timer
-    let _timer_handle = timer::spawn_timer(
+    // 6) Start timer — keep the handle so callback.rs can cancel it once
+    //    the real outcome (success or timeout) is known, instead of letting
+    //    it tick on its own independent schedule.
+    let timer_handle = timer::spawn_timer(
         endpoint_id.to_string(),
         request_number,
         timer_cfg.clone(),
         state.events_tx.clone(),
     );
+    state
+        .active_timers
+        .lock()
+        .unwrap()
+        .insert((endpoint_id.to_string(), request_number), timer_handle);
 
     // 7) Spawn edms-child for the actual HTTP test call
     //    This is the original run_test task — unchanged
@@ -388,7 +429,7 @@ async fn handle_ws_subscribe_bookmarks(mut socket: WebSocket, state: AppState) {
     let bookmarks = tokio::task::spawn_blocking({
         let st = state.clone();
         move || {
-            let ids = db::list_bookmarked_endpoints_active(&st.core)?;
+            let ids = db::list_bookmarked_endpoints_active(&st.core, &st.queries)?;
             db::endpoints_for_ids(&st.core, &st.queries, &ids)
         }
     })
@@ -426,7 +467,7 @@ async fn handle_ws_add_from_history(mut socket: WebSocket, state: AppState, _boo
         let res = tokio::task::spawn_blocking({
             let st = state.clone();
             let eid = endpoint_id.clone();
-            move || db::insert_bookmark_active(&st.core, &eid, None)
+            move || db::insert_bookmark_active(&st.core, &st.queries, &eid, None)
         })
         .await;
 
@@ -434,12 +475,13 @@ async fn handle_ws_add_from_history(mut socket: WebSocket, state: AppState, _boo
             Ok(Ok(_)) => {
                 let count = tokio::task::spawn_blocking({
                     let st = state.clone();
-                    move || db::bookmarks_count_active(&st.core)
+                    move || db::bookmarks_count_active(&st.core, &st.queries)
                 })
                 .await
                 .unwrap_or(Ok(0))
                 .unwrap_or(0);
 
+                state.refresh_dashboard_snapshot();
                 state.emit(ServerEvent::BookmarksUpdated { count }).await;
                 let resp = json!({ "type": "ok", "bookmark_count": count });
                 let _ = socket.send(Message::Text(resp.to_string())).await;
@@ -467,7 +509,7 @@ async fn handle_ws_delete_from_bookmark(mut socket: WebSocket, state: AppState, 
         let res = tokio::task::spawn_blocking({
             let st = state.clone();
             let eid = endpoint_id.clone();
-            move || db::delete_bookmark_active(&st.core, &eid)
+            move || db::delete_bookmark_active(&st.core, &st.queries, &eid)
         })
         .await;
 
@@ -475,12 +517,13 @@ async fn handle_ws_delete_from_bookmark(mut socket: WebSocket, state: AppState, 
             Ok(Ok(_)) => {
                 let count = tokio::task::spawn_blocking({
                     let st = state.clone();
-                    move || db::bookmarks_count_active(&st.core)
+                    move || db::bookmarks_count_active(&st.core, &st.queries)
                 })
                 .await
                 .unwrap_or(Ok(0))
                 .unwrap_or(0);
 
+                state.refresh_dashboard_snapshot();
                 state.emit(ServerEvent::BookmarksUpdated { count }).await;
                 let resp = json!({ "type": "ok", "bookmark_count": count });
                 let _ = socket.send(Message::Text(resp.to_string())).await;
@@ -491,4 +534,60 @@ async fn handle_ws_delete_from_bookmark(mut socket: WebSocket, state: AppState, 
             }
         }
     }
+}
+
+// ── Fetch a saved request/response body ─────────────────────────────────
+//
+// TestFinished only carries status_code/response_time_ms/response_file — a
+// server-side path, not the actual content. These routes are the missing
+// second half of the WS-trigger-then-REST-fetch pattern: the client uses
+// endpoint_id + request_number (already known from TestFinished) to pull
+// the real body. Deliberately NOT taking a raw path from the client —
+// that would be a path-traversal risk. The server builds the path itself,
+// the same way test_view.rs/callback.rs already do when writing it.
+
+fn safe_id(id: &str) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    if id.is_empty() || id.contains("..") || id.contains('/') || id.contains('\\') {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "invalid endpoint_id" })),
+        ));
+    }
+    Ok(())
+}
+
+async fn read_saved_file(
+    endpoint_id: &str,
+    request_number: i64,
+    kind: &str,
+) -> (StatusCode, Json<serde_json::Value>) {
+    if let Err(e) = safe_id(endpoint_id) {
+        return e;
+    }
+    let path = format!("edms_data/{endpoint_id}/{endpoint_id}-{kind}-{request_number}.json");
+    match tokio::fs::read_to_string(&path).await {
+        Ok(content) => {
+            let body: serde_json::Value =
+                serde_json::from_str(&content).unwrap_or(serde_json::Value::String(content));
+            (StatusCode::OK, Json(json!({ "ok": true, "body": body })))
+        }
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "ok": false, "error": format!("no saved {kind} for {endpoint_id}#{request_number}: {e}") })),
+        ),
+    }
+}
+
+/// GET /test-view/{endpoint_id}/request/{request_number}
+pub async fn get_saved_request(
+    Path((endpoint_id, request_number)): Path<(String, i64)>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    read_saved_file(&endpoint_id, request_number, "request").await
+}
+
+/// GET /test-view/{endpoint_id}/response/{request_number}
+pub async fn get_saved_response(
+    Path((endpoint_id, request_number)): Path<(String, i64)>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    read_saved_file(&endpoint_id, request_number, "response").await
 }
