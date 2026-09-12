@@ -2,33 +2,15 @@
 // EDMS UNIVERSAL TAG MANAGER
 // ============================================================
 //
-// This module is intentionally independent from List View.
+// Backend-aware universal tag manager.
 //
-// Each view initializes it with an adapter:
+// Views may optionally provide:
 //
-// TagManager.init({
-//     view: "list",
-//     getItems: () => endpoints,
-//     getTags: item => item.tags,
-//     setTags: (item, tags) => {
-//         item.tags = tags;
-//     },
-//     onChange: () => {
-//         renderTags();
-//         updateStats();
-//         applyFilters();
-//     }
-// });
+// addTag: async (item, tag) => {},
+// removeTag: async (item, tag) => {},
 //
-// Supported operations:
-// - View all tags
-// - Select tags with checkboxes
-// - Rename tag
-// - Merge multiple tags
-// - Delete tag
+// If these adapters are not provided, operations remain local.
 //
-// ============================================================
-
 
 const TagManager = (() => {
 
@@ -37,11 +19,8 @@ const TagManager = (() => {
     // ========================================================
 
     let config = null;
-
     let selectedTags = new Set();
-
     let currentTags = [];
-
     let managerOpen = false;
 
 
@@ -55,19 +34,22 @@ const TagManager = (() => {
 
         getItems: () => [],
 
-        getTags: item => {
-
-            return Array.isArray(item?.tags)
+        getTags: item =>
+            Array.isArray(item?.tags)
                 ? item.tags
-                : [];
-
-        },
+                : [],
 
         setTags: (item, tags) => {
-
             item.tags = tags;
-
         },
+
+        // Optional backend adapters.
+        // When supplied, Rename / Merge / Delete
+        // will use them to persist changes.
+
+        addTag: null,
+
+        removeTag: null,
 
         onChange: null,
 
@@ -83,52 +65,31 @@ const TagManager = (() => {
     function init(options = {}) {
 
         config = {
-
             ...defaultConfig,
-
             ...options
-
         };
 
-
-        if (
-            typeof config.getItems !== "function"
-        ) {
-
+        if (typeof config.getItems !== "function") {
             throw new Error(
                 "TagManager: getItems must be a function."
             );
-
         }
 
-
-        if (
-            typeof config.getTags !== "function"
-        ) {
-
+        if (typeof config.getTags !== "function") {
             throw new Error(
                 "TagManager: getTags must be a function."
             );
-
         }
 
-
-        if (
-            typeof config.setTags !== "function"
-        ) {
-
+        if (typeof config.setTags !== "function") {
             throw new Error(
                 "TagManager: setTags must be a function."
             );
-
         }
-
 
         setupButton();
 
-
         return TagManager;
-
     }
 
 
@@ -139,39 +100,17 @@ const TagManager = (() => {
     function setupButton() {
 
         const button =
-            document.getElementById(
-                "tagsManager"
-            );
+            document.getElementById("tagsManager");
 
+        if (!button) return;
 
-        if (!button) {
-
+        if (button.dataset.tagManagerBound === "true") {
             return;
-
         }
 
+        button.dataset.tagManagerBound = "true";
 
-        // Prevent duplicate listeners when a view
-        // is initialized more than once.
-
-        if (
-            button.dataset.tagManagerBound === "true"
-        ) {
-
-            return;
-
-        }
-
-
-        button.dataset.tagManagerBound =
-            "true";
-
-
-        button.addEventListener(
-            "click",
-            open
-        );
-
+        button.addEventListener("click", open);
     }
 
 
@@ -181,18 +120,11 @@ const TagManager = (() => {
 
     function getItems() {
 
-        if (!config) {
-
-            return [];
-
-        }
-
+        if (!config) return [];
 
         try {
 
-            const items =
-                config.getItems();
-
+            const items = config.getItems();
 
             return Array.isArray(items)
                 ? items
@@ -205,11 +137,8 @@ const TagManager = (() => {
                 error
             );
 
-
             return [];
-
         }
-
     }
 
 
@@ -219,75 +148,44 @@ const TagManager = (() => {
 
     function getAllTags() {
 
-        const tagSet =
-            new Set();
+        const tagSet = new Set();
 
+        getItems().forEach(item => {
 
-        getItems().forEach(
-            item => {
+            let tags = [];
 
-                let tags = [];
+            try {
+                tags = config.getTags(item);
+            } catch (error) {
 
-
-                try {
-
-                    tags =
-                        config.getTags(item);
-
-                } catch (error) {
-
-                    console.error(
-                        "TagManager: failed to read tags.",
-                        error
-                    );
-
-                    return;
-
-                }
-
-
-                if (
-                    !Array.isArray(tags)
-                ) {
-
-                    return;
-
-                }
-
-
-                tags.forEach(
-                    tag => {
-
-                        const normalized =
-                            normalizeTag(tag);
-
-
-                        if (normalized) {
-
-                            tagSet.add(
-                                normalized
-                            );
-
-                        }
-
-                    }
+                console.error(
+                    "TagManager: failed to read tags.",
+                    error
                 );
 
+                return;
             }
-        );
 
+            if (!Array.isArray(tags)) return;
+
+            tags.forEach(tag => {
+
+                const normalized = normalizeTag(tag);
+
+                if (normalized) {
+                    tagSet.add(normalized);
+                }
+            });
+        });
 
         return [...tagSet].sort(
             (a, b) =>
                 a.localeCompare(
                     b,
                     undefined,
-                    {
-                        sensitivity: "base"
-                    }
+                    { sensitivity: "base" }
                 )
         );
-
     }
 
 
@@ -299,74 +197,38 @@ const TagManager = (() => {
 
         const counts = {};
 
+        getItems().forEach(item => {
 
-        getItems().forEach(
-            item => {
+            let tags = [];
 
-                let tags = [];
+            try {
+                tags = config.getTags(item);
+            } catch {
+                return;
+            }
 
+            if (!Array.isArray(tags)) return;
 
-                try {
+            const unique = new Set();
 
-                    tags =
-                        config.getTags(item);
+            tags.forEach(tag => {
 
-                } catch {
-
-                    return;
-
-                }
-
+                const normalized = normalizeTag(tag);
 
                 if (
-                    !Array.isArray(tags)
+                    normalized &&
+                    !unique.has(normalized.toLowerCase())
                 ) {
 
-                    return;
+                    unique.add(normalized.toLowerCase());
 
+                    counts[normalized] =
+                        (counts[normalized] || 0) + 1;
                 }
-
-
-                const uniqueTags =
-                    new Set();
-
-
-                tags.forEach(
-                    tag => {
-
-                        const normalized =
-                            normalizeTag(tag);
-
-
-                        if (
-                            normalized &&
-                            !uniqueTags.has(
-                                normalized
-                            )
-                        ) {
-
-                            uniqueTags.add(
-                                normalized
-                            );
-
-
-                            counts[normalized] =
-                                (
-                                    counts[normalized] ||
-                                    0
-                                ) + 1;
-
-                        }
-
-                    }
-                );
-
-            }
-        );
-
+            });
+        });
 
         return counts;
-
     }
 
 
@@ -383,9 +245,7 @@ const TagManager = (() => {
             );
 
             return;
-
         }
-
 
         managerOpen = true;
 
@@ -393,9 +253,7 @@ const TagManager = (() => {
 
         refreshTags();
 
-
         renderManager();
-
     }
 
 
@@ -409,16 +267,9 @@ const TagManager = (() => {
 
         selectedTags.clear();
 
-
-        if (
-            typeof window.closeModal ===
-            "function"
-        ) {
-
+        if (typeof window.closeModal === "function") {
             window.closeModal();
-
         }
-
     }
 
 
@@ -428,22 +279,13 @@ const TagManager = (() => {
 
     function refreshTags() {
 
-        currentTags =
-            getAllTags();
+        currentTags = getAllTags();
 
-
-        // Remove selections that no longer exist.
-
-        selectedTags =
-            new Set(
-                [...selectedTags].filter(
-                    tag =>
-                        currentTags.includes(
-                            tag
-                        )
-                )
-            );
-
+        selectedTags = new Set(
+            [...selectedTags].filter(
+                tag => currentTags.includes(tag)
+            )
+        );
     }
 
 
@@ -453,60 +295,42 @@ const TagManager = (() => {
 
     function renderManager() {
 
-        const counts =
-            getTagCounts();
-
+        const counts = getTagCounts();
 
         const content = `
 
-            <div
-                class="space-y-4 "
-            >
+            <div class="space-y-4">
 
-                <!-- =========================================
-                     HEADER / INFO
-                ========================================== -->
-
-                <div
-                    class="flex items-center
-                           justify-between "
-                >
+                <div class="flex items-center justify-between">
 
                     <div>
 
-                        <p
-                            class="text-xs
-                                   text-slate-400"
-                        >
+                        <p class="text-xs text-slate-400">
                             ${currentTags.length}
                             tag${currentTags.length === 1 ? "" : "s"}
                         </p>
 
-                        <p
-                            class="mt-0.5
-                                   text-[10px]
-                                   text-slate-600"
-                        >
+                        <p class="mt-0.5 text-[10px] text-slate-600">
                             ${getItems().length}
                             items in this view
                         </p>
 
                     </div>
 
-
                     <button
                         type="button"
                         id="tmRefresh"
-                        class="rounded-md
-                               border
-                               border-slate-700
-                               bg-slate-800
-                               px-2.5 py-1.5
-                               text-[11px]
-                               text-slate-400
-                               transition
-                               hover:bg-slate-700
-                               hover:text-white"
+                        class="
+                            rounded-md
+                            border border-slate-700
+                            bg-slate-800
+                            px-2.5 py-1.5
+                            text-[11px]
+                            text-slate-400
+                            transition
+                            hover:bg-slate-700
+                            hover:text-white
+                        "
                     >
                         Refresh
                     </button>
@@ -514,64 +338,52 @@ const TagManager = (() => {
                 </div>
 
 
-                <!-- =========================================
-                     SELECTED ACTION BAR
-                ========================================== -->
-
                 <div
                     id="tmActionBar"
                     class="
                         hidden
                         rounded-lg
-                        border
-                        border-cyan-500/20
+                        border border-cyan-500/20
                         bg-cyan-500/5
                         p-3
                     "
                 >
 
-                    <div
-                        class="flex items-center
-                               justify-between
-                               gap-3"
-                    >
+                    <div class="flex items-center justify-between gap-3">
 
                         <span
                             id="tmSelectedCount"
-                            class="text-xs
-                                   font-medium
-                                   text-cyan-300"
+                            class="
+                                text-xs
+                                font-medium
+                                text-cyan-300
+                            "
                         >
                             0 selected
                         </span>
 
-
                         <button
                             type="button"
                             id="tmClearSelection"
-                            class="text-[11px]
-                                   text-slate-500
-                                   hover:text-white"
+                            class="
+                                text-[11px]
+                                text-slate-500
+                                hover:text-white
+                            "
                         >
                             Clear
                         </button>
 
                     </div>
 
-
-                    <div
-                        class="mt-3
-                               flex flex-wrap
-                               gap-2"
-                    >
+                    <div class="mt-3 flex flex-wrap gap-2">
 
                         <button
                             type="button"
                             id="tmRename"
                             class="
                                 rounded-md
-                                border
-                                border-slate-700
+                                border border-slate-700
                                 bg-slate-800
                                 px-2.5 py-1.5
                                 text-[11px]
@@ -583,14 +395,12 @@ const TagManager = (() => {
                             Rename
                         </button>
 
-
                         <button
                             type="button"
                             id="tmMerge"
                             class="
                                 rounded-md
-                                border
-                                border-slate-700
+                                border border-slate-700
                                 bg-slate-800
                                 px-2.5 py-1.5
                                 text-[11px]
@@ -602,14 +412,12 @@ const TagManager = (() => {
                             Merge
                         </button>
 
-
                         <button
                             type="button"
                             id="tmDelete"
                             class="
                                 rounded-md
-                                border
-                                border-rose-500/20
+                                border border-rose-500/20
                                 bg-rose-500/10
                                 px-2.5 py-1.5
                                 text-[11px]
@@ -626,65 +434,58 @@ const TagManager = (() => {
                 </div>
 
 
-                <!-- =========================================
-                     TAG LIST
-                ========================================== -->
-
                 <div>
 
                     <div
-                        class="mb-2
-                               flex items-center
-                               justify-between"
+                        class="
+                            mb-2
+                            flex items-center
+                            justify-between
+                        "
                     >
 
                         <h4
-                            class="text-[11px]
-                                   font-medium
-                                   text-slate-500"
+                            class="
+                                text-[11px]
+                                font-medium
+                                text-slate-500
+                            "
                         >
                             Tags
                         </h4>
 
-
                         <span
-                            class="text-[10px]
-                                   text-slate-600"
+                            class="
+                                text-[10px]
+                                text-slate-600
+                            "
                         >
                             Select tags to manage
                         </span>
 
                     </div>
 
-
                     <div
                         id="tmTagList"
                         class="
                             max-h-[45vh]
                             overflow-y-auto
-                            
                             rounded-lg
-                            border
-                            border-slate-800
+                            border border-slate-800
                         "
                     >
-
                         ${renderTagList(counts)}
-
                     </div>
 
                 </div>
 
 
-                <!-- =========================================
-                     FOOTER
-                ========================================== -->
-
                 <div
-                    class="flex justify-end
-                           border-t
-                           border-slate-800
-                           pt-3"
+                    class="
+                        flex justify-end
+                        border-t border-slate-800
+                        pt-3
+                    "
                 >
 
                     <button
@@ -692,8 +493,7 @@ const TagManager = (() => {
                         data-modal-close
                         class="
                             rounded-md
-                            border
-                            border-slate-700
+                            border border-slate-700
                             px-3 py-1.5
                             text-xs
                             text-slate-400
@@ -709,11 +509,7 @@ const TagManager = (() => {
 
         `;
 
-
-        if (
-            typeof window.openModal ===
-            "function"
-        ) {
+        if (typeof window.openModal === "function") {
 
             window.openModal(
                 `${config.title} — ${capitalize(config.view)}`,
@@ -722,17 +518,12 @@ const TagManager = (() => {
 
         } else {
 
-            fallbackModal(
-                content
-            );
-
+            fallbackModal(content);
         }
-
 
         bindManagerEvents();
 
         updateActionBar();
-
     }
 
 
@@ -742,29 +533,17 @@ const TagManager = (() => {
 
     function renderTagList(counts) {
 
-        if (
-            currentTags.length === 0
-        ) {
+        if (currentTags.length === 0) {
 
             return `
 
-                <div
-                    class="px-4 py-8
-                           text-center"
-                >
+                <div class="px-4 py-8 text-center">
 
-                    <p
-                        class="text-xs
-                               text-slate-500"
-                    >
+                    <p class="text-xs text-slate-500">
                         No tags found
                     </p>
 
-                    <p
-                        class="mt-1
-                               text-[10px]
-                               text-slate-700"
-                    >
+                    <p class="mt-1 text-[10px] text-slate-700">
                         Tags will appear here when
                         items contain tags.
                     </p>
@@ -772,87 +551,70 @@ const TagManager = (() => {
                 </div>
 
             `;
-
         }
 
+        return currentTags.map(tag => {
 
-        return currentTags
-            .map(
-                tag => {
+            const checked =
+                selectedTags.has(tag);
 
-                    const checked =
-                        selectedTags.has(
-                            tag
-                        );
+            const count =
+                counts[tag] || 0;
 
+            return `
 
-                    const count =
-                        counts[tag] || 0;
+                <label
+                    class="
+                        flex cursor-pointer
+                        items-center gap-3
+                        border-b border-slate-800
+                        px-3 py-2
+                        last:border-0
+                        transition
+                        hover:bg-slate-800/50
+                    "
+                >
 
+                    <input
+                        type="checkbox"
+                        class="
+                            tm-tag-checkbox
+                            h-3.5 w-3.5
+                            accent-cyan-400
+                        "
+                        data-tag="${escapeAttr(tag)}"
+                        ${checked ? "checked" : ""}
+                    >
 
-                    return `
+                    <span
+                        class="
+                            min-w-0 flex-1
+                            truncate
+                            text-xs
+                            text-slate-300
+                        "
+                    >
+                        ${escape(tag)}
+                    </span>
 
-                        <label
-                            class="
-                                flex
-                                cursor-pointer
-                                items-center
-                                gap-3
-                                border-b
-                                border-slate-800
-                                px-3 py-2
-                                last:border-0
-                                transition
-                                hover:bg-slate-800/50
-                            "
-                        >
+                    <span
+                        class="
+                            shrink-0
+                            rounded-md
+                            bg-slate-800
+                            px-1.5 py-0.5
+                            text-[10px]
+                            text-slate-500
+                        "
+                    >
+                        ${count}
+                    </span>
 
-                            <input
-                                type="checkbox"
-                                class="
-                                    tm-tag-checkbox
-                                    h-3.5 w-3.5
-                                    accent-cyan-400
-                                "
-                                data-tag="${escapeAttr(tag)}"
-                                ${checked ? "checked" : ""}
-                            >
+                </label>
 
+            `;
 
-                            <span
-                                class="
-                                    min-w-0
-                                    flex-1
-                                    truncate
-                                    text-xs
-                                    text-slate-300
-                                "
-                            >
-                                ${escape(tag)}
-                            </span>
-
-
-                            <span
-                                class="
-                                    shrink-0
-                                    rounded-md
-                                    bg-slate-800
-                                    px-1.5 py-0.5
-                                    text-[10px]
-                                    text-slate-500
-                                "
-                            >
-                                ${count}
-                            </span>
-
-                        </label>
-
-                    `;
-
-                }
-            )
-            .join("");
-
+        }).join("");
     }
 
 
@@ -862,146 +624,74 @@ const TagManager = (() => {
 
     function bindManagerEvents() {
 
-        // ----------------------------------------------------
-        // Refresh
-        // ----------------------------------------------------
+        document
+            .getElementById("tmRefresh")
+            ?.addEventListener("click", () => {
+
+                refreshTags();
+
+                renderManager();
+            });
+
 
         document
-            .getElementById(
-                "tmRefresh"
-            )
-            ?.addEventListener(
-                "click",
-                () => {
+            .querySelectorAll(".tm-tag-checkbox")
+            .forEach(checkbox => {
 
-                    refreshTags();
+                checkbox.addEventListener("change", () => {
 
-                    renderManager();
+                    const tag =
+                        checkbox.dataset.tag;
 
-                }
-            );
-
-
-        // ----------------------------------------------------
-        // Checkboxes
-        // ----------------------------------------------------
-
-        document
-            .querySelectorAll(
-                ".tm-tag-checkbox"
-            )
-            .forEach(
-                checkbox => {
-
-                    checkbox.addEventListener(
-                        "change",
-                        () => {
-
-                            const tag =
-                                checkbox.dataset.tag;
-
-
-                            if (
-                                checkbox.checked
-                            ) {
-
-                                selectedTags.add(
-                                    tag
-                                );
-
-                            } else {
-
-                                selectedTags.delete(
-                                    tag
-                                );
-
-                            }
-
-
-                            updateActionBar();
-
-                        }
-                    );
-
-                }
-            );
-
-
-        // ----------------------------------------------------
-        // Clear
-        // ----------------------------------------------------
-
-        document
-            .getElementById(
-                "tmClearSelection"
-            )
-            ?.addEventListener(
-                "click",
-                () => {
-
-                    selectedTags.clear();
-
-                    document
-                        .querySelectorAll(
-                            ".tm-tag-checkbox"
-                        )
-                        .forEach(
-                            checkbox => {
-
-                                checkbox.checked =
-                                    false;
-
-                            }
-                        );
-
+                    if (checkbox.checked) {
+                        selectedTags.add(tag);
+                    } else {
+                        selectedTags.delete(tag);
+                    }
 
                     updateActionBar();
+                });
+            });
 
-                }
-            );
-
-
-        // ----------------------------------------------------
-        // Rename
-        // ----------------------------------------------------
 
         document
-            .getElementById(
-                "tmRename"
-            )
+            .getElementById("tmClearSelection")
+            ?.addEventListener("click", () => {
+
+                selectedTags.clear();
+
+                document
+                    .querySelectorAll(".tm-tag-checkbox")
+                    .forEach(checkbox => {
+                        checkbox.checked = false;
+                    });
+
+                updateActionBar();
+            });
+
+
+        document
+            .getElementById("tmRename")
             ?.addEventListener(
                 "click",
                 openRenameModal
             );
 
 
-        // ----------------------------------------------------
-        // Merge
-        // ----------------------------------------------------
-
         document
-            .getElementById(
-                "tmMerge"
-            )
+            .getElementById("tmMerge")
             ?.addEventListener(
                 "click",
                 openMergeModal
             );
 
 
-        // ----------------------------------------------------
-        // Delete
-        // ----------------------------------------------------
-
         document
-            .getElementById(
-                "tmDelete"
-            )
+            .getElementById("tmDelete")
             ?.addEventListener(
                 "click",
                 openDeleteModal
             );
-
     }
 
 
@@ -1012,135 +702,86 @@ const TagManager = (() => {
     function updateActionBar() {
 
         const bar =
-            document.getElementById(
-                "tmActionBar"
-            );
-
+            document.getElementById("tmActionBar");
 
         const count =
-            document.getElementById(
-                "tmSelectedCount"
-            );
-
+            document.getElementById("tmSelectedCount");
 
         const selectedCount =
             selectedTags.size;
 
-
         if (selectedCount > 0) {
-
-            bar?.classList.remove(
-                "hidden"
-            );
-
+            bar?.classList.remove("hidden");
         } else {
-
-            bar?.classList.add(
-                "hidden"
-            );
-
+            bar?.classList.add("hidden");
         }
-
 
         if (count) {
-
             count.textContent =
                 `${selectedCount} selected`;
-
         }
 
-
         const renameButton =
-            document.getElementById(
-                "tmRename"
-            );
-
+            document.getElementById("tmRename");
 
         const mergeButton =
-            document.getElementById(
-                "tmMerge"
-            );
-
+            document.getElementById("tmMerge");
 
         const deleteButton =
-            document.getElementById(
-                "tmDelete"
-            );
-
+            document.getElementById("tmDelete");
 
         if (renameButton) {
 
             renameButton.disabled =
                 selectedCount !== 1;
 
-            updateDisabledStyle(
-                renameButton
-            );
-
+            updateDisabledStyle(renameButton);
         }
-
 
         if (mergeButton) {
 
             mergeButton.disabled =
                 selectedCount < 2;
 
-            updateDisabledStyle(
-                mergeButton
-            );
-
+            updateDisabledStyle(mergeButton);
         }
-
 
         if (deleteButton) {
 
             deleteButton.disabled =
                 selectedCount === 0;
 
-            updateDisabledStyle(
-                deleteButton
-            );
-
+            updateDisabledStyle(deleteButton);
         }
-
     }
 
 
     // ========================================================
-    // RENAME TAG
+    // RENAME TAG MODAL
     // ========================================================
 
     function openRenameModal() {
 
-        if (
-            selectedTags.size !== 1
-        ) {
-
-            return;
-
-        }
-
+        if (selectedTags.size !== 1) return;
 
         const oldTag =
             [...selectedTags][0];
 
-
         const content = `
 
-            <div
-                class="space-y-4"
-            >
+            <div class="space-y-4">
 
                 <div>
 
                     <label
-                        class="mb-1 block
-                               text-xs
-                               text-slate-500"
+                        class="
+                            mb-1 block
+                            text-xs
+                            text-slate-500
+                        "
                     >
                         New tag name
                     </label>
-
 
                     <input
                         id="tmRenameInput"
@@ -1148,8 +789,7 @@ const TagManager = (() => {
                         class="
                             h-9 w-full
                             rounded-md
-                            border
-                            border-slate-700
+                            border border-slate-700
                             bg-slate-950
                             px-3
                             text-xs
@@ -1161,46 +801,35 @@ const TagManager = (() => {
 
                 </div>
 
-
                 <div
                     class="
                         rounded-lg
-                        border
-                        border-slate-800
+                        border border-slate-800
                         bg-slate-950/40
                         p-3
                     "
                 >
 
-                    <p
-                        class="text-[11px]
-                               text-slate-500"
-                    >
+                    <p class="text-[11px] text-slate-500">
+
                         This will rename
-                        <span
-                            class="font-medium
-                                   text-slate-300"
-                        >
+                        <span class="font-medium text-slate-300">
                             ${escape(oldTag)}
                         </span>
                         everywhere in the current view.
+
                     </p>
 
                 </div>
 
-
-                <div
-                    class="flex justify-end
-                           gap-2"
-                >
+                <div class="flex justify-end gap-2">
 
                     <button
                         type="button"
                         data-modal-close
                         class="
                             rounded-md
-                            border
-                            border-slate-700
+                            border border-slate-700
                             px-3 py-1.5
                             text-xs
                             text-slate-400
@@ -1209,7 +838,6 @@ const TagManager = (() => {
                     >
                         Cancel
                     </button>
-
 
                     <button
                         type="button"
@@ -1233,30 +861,24 @@ const TagManager = (() => {
 
         `;
 
-
         openInternalModal(
             "Rename Tag",
             content
         );
 
-
         document
-            .getElementById(
-                "tmConfirmRename"
-            )
+            .getElementById("tmConfirmRename")
             ?.addEventListener(
                 "click",
-                () => {
+                async () => {
 
                     const input =
                         document.getElementById(
                             "tmRenameInput"
                         );
 
-
                     const newName =
                         input?.value.trim();
-
 
                     if (!newName) {
 
@@ -1266,18 +888,14 @@ const TagManager = (() => {
                         );
 
                         return;
-
                     }
 
-
-                    renameTag(
+                    await renameTag(
                         oldTag,
                         newName
                     );
-
                 }
             );
-
     }
 
 
@@ -1285,7 +903,7 @@ const TagManager = (() => {
     // RENAME IMPLEMENTATION
     // ========================================================
 
-    function renameTag(
+    async function renameTag(
         oldTag,
         newTag
     ) {
@@ -1293,13 +911,7 @@ const TagManager = (() => {
         const normalizedNewTag =
             normalizeTag(newTag);
 
-
-        if (!normalizedNewTag) {
-
-            return;
-
-        }
-
+        if (!normalizedNewTag) return;
 
         const existingTag =
             currentTags.find(
@@ -1307,7 +919,6 @@ const TagManager = (() => {
                     tag.toLowerCase() ===
                     normalizedNewTag.toLowerCase()
             );
-
 
         if (
             existingTag &&
@@ -1320,200 +931,191 @@ const TagManager = (() => {
             );
 
             return;
-
         }
 
-
         let changed = 0;
+        let failed = 0;
 
+        const items = getItems();
 
-        getItems().forEach(
-            item => {
+        for (const item of items) {
 
-                let tags;
+            let tags;
 
+            try {
+                tags = config.getTags(item);
+            } catch {
+                failed++;
+                continue;
+            }
 
-                try {
+            if (!Array.isArray(tags)) continue;
 
-                    tags =
-                        config.getTags(item);
+            const hasTag =
+                tags.some(
+                    tag =>
+                        normalizeTag(tag).toLowerCase() ===
+                        oldTag.toLowerCase()
+                );
 
-                } catch {
+            if (!hasTag) continue;
 
-                    return;
+            try {
 
-                }
-
-
+                // Backend-aware operation.
                 if (
-                    !Array.isArray(tags)
+                    typeof config.removeTag === "function"
                 ) {
 
-                    return;
-
+                    await config.removeTag(
+                        item,
+                        oldTag
+                    );
                 }
 
+                if (
+                    typeof config.addTag === "function"
+                ) {
 
-                let modified =
-                    false;
-
+                    await config.addTag(
+                        item,
+                        normalizedNewTag
+                    );
+                }
 
                 const newTags =
-                    tags.map(
-                        tag => {
-
-                            if (
-                                normalizeTag(tag) ===
-                                oldTag
-                            ) {
-
-                                modified = true;
-
-                                changed++;
-
-                                return normalizedNewTag;
-
-                            }
-
-
-                            return tag;
-
-                        }
+                    tags.map(tag =>
+                        normalizeTag(tag).toLowerCase() ===
+                        oldTag.toLowerCase()
+                            ? normalizedNewTag
+                            : tag
                     );
 
+                config.setTags(
+                    item,
+                    uniqueTags(newTags)
+                );
 
-                if (modified) {
+                changed++;
 
-                    config.setTags(
-                        item,
-                        uniqueTags(
-                            newTags
-                        )
-                    );
+            } catch (error) {
 
-                }
+                failed++;
 
+                console.error(
+                    "TagManager: rename failed.",
+                    error
+                );
             }
-        );
-
+        }
 
         selectedTags.clear();
 
-
         closeInternalModal();
 
+        if (changed === 0) {
 
-        notify(
-            changed === 0
-                ? "No items were changed."
-                : `"${oldTag}" renamed to "${normalizedNewTag}".`,
-            changed === 0
-                ? "info"
-                : "success"
-        );
+            notify(
+                failed
+                    ? "Tag rename failed."
+                    : "No items were changed.",
+                "error"
+            );
 
+        } else if (failed > 0) {
+
+            notify(
+                `"${oldTag}" renamed with ${failed} item${failed === 1 ? "" : "s"} failed.`,
+                "error"
+            );
+
+        } else {
+
+            notify(
+                `"${oldTag}" renamed to "${normalizedNewTag}".`,
+                "success"
+            );
+        }
 
         notifyChange();
-
 
         if (managerOpen) {
 
             refreshTags();
 
             renderManager();
-
         }
-
     }
 
 
     // ========================================================
-    // MERGE TAGS
+    // MERGE MODAL
     // ========================================================
 
     function openMergeModal() {
 
-        if (
-            selectedTags.size < 2
-        ) {
-
-            return;
-
-        }
-
+        if (selectedTags.size < 2) return;
 
         const tags =
             [...selectedTags];
 
-
         const tagList =
-            tags
-                .map(
-                    tag => `
+            tags.map(tag => `
 
-                        <span
-                            class="
-                                rounded-md
-                                bg-slate-800
-                                px-2 py-1
-                                text-[10px]
-                                text-slate-300
-                            "
-                        >
-                            ${escape(tag)}
-                        </span>
+                <span
+                    class="
+                        rounded-md
+                        bg-slate-800
+                        px-2 py-1
+                        text-[10px]
+                        text-slate-300
+                    "
+                >
+                    ${escape(tag)}
+                </span>
 
-                    `
-                )
-                .join("");
-
+            `).join("");
 
         const content = `
 
-            <div
-                class="space-y-4"
-            >
+            <div class="space-y-4">
 
                 <div>
 
                     <p
-                        class="mb-2
-                               text-xs
-                               text-slate-500"
+                        class="
+                            mb-2
+                            text-xs
+                            text-slate-500
+                        "
                     >
                         Tags to merge
                     </p>
 
-
-                    <div
-                        class="flex
-                               flex-wrap
-                               gap-1.5"
-                    >
+                    <div class="flex flex-wrap gap-1.5">
                         ${tagList}
                     </div>
 
                 </div>
 
-
                 <div>
 
                     <label
-                        class="mb-1 block
-                               text-xs
-                               text-slate-500"
+                        class="
+                            mb-1 block
+                            text-xs
+                            text-slate-500
+                        "
                     >
                         New tag name
                     </label>
-
 
                     <input
                         id="tmMergeInput"
                         class="
                             h-9 w-full
                             rounded-md
-                            border
-                            border-slate-700
+                            border border-slate-700
                             bg-slate-950
                             px-3
                             text-xs
@@ -1526,21 +1128,16 @@ const TagManager = (() => {
 
                 </div>
 
-
                 <div
                     class="
                         rounded-lg
-                        border
-                        border-amber-500/20
+                        border border-amber-500/20
                         bg-amber-500/5
                         p-3
                     "
                 >
 
-                    <p
-                        class="text-[11px]
-                               text-amber-300"
-                    >
+                    <p class="text-[11px] text-amber-300">
                         All selected tags will be replaced
                         by the new tag across the current
                         view.
@@ -1548,19 +1145,14 @@ const TagManager = (() => {
 
                 </div>
 
-
-                <div
-                    class="flex justify-end
-                           gap-2"
-                >
+                <div class="flex justify-end gap-2">
 
                     <button
                         type="button"
                         data-modal-close
                         class="
                             rounded-md
-                            border
-                            border-slate-700
+                            border border-slate-700
                             px-3 py-1.5
                             text-xs
                             text-slate-400
@@ -1569,7 +1161,6 @@ const TagManager = (() => {
                     >
                         Cancel
                     </button>
-
 
                     <button
                         type="button"
@@ -1593,30 +1184,24 @@ const TagManager = (() => {
 
         `;
 
-
         openInternalModal(
             "Merge Tags",
             content
         );
 
-
         document
-            .getElementById(
-                "tmConfirmMerge"
-            )
+            .getElementById("tmConfirmMerge")
             ?.addEventListener(
                 "click",
-                () => {
+                async () => {
 
                     const input =
                         document.getElementById(
                             "tmMergeInput"
                         );
 
-
                     const newName =
                         input?.value.trim();
-
 
                     if (!newName) {
 
@@ -1626,18 +1211,14 @@ const TagManager = (() => {
                         );
 
                         return;
-
                     }
 
-
-                    mergeTags(
+                    await mergeTags(
                         tags,
                         newName
                     );
-
                 }
             );
-
     }
 
 
@@ -1645,7 +1226,7 @@ const TagManager = (() => {
     // MERGE IMPLEMENTATION
     // ========================================================
 
-    function mergeTags(
+    async function mergeTags(
         tagsToMerge,
         newTag
     ) {
@@ -1653,213 +1234,192 @@ const TagManager = (() => {
         const normalizedNewTag =
             normalizeTag(newTag);
 
-
-        if (!normalizedNewTag) {
-
-            return;
-
-        }
-
+        if (!normalizedNewTag) return;
 
         let changed = 0;
+        let failed = 0;
 
+        const items = getItems();
 
-        getItems().forEach(
-            item => {
+        for (const item of items) {
 
-                let tags;
+            let tags;
 
+            try {
+                tags = config.getTags(item);
+            } catch {
+                failed++;
+                continue;
+            }
 
-                try {
+            if (!Array.isArray(tags)) continue;
 
-                    tags =
-                        config.getTags(item);
-
-                } catch {
-
-                    return;
-
-                }
-
-
-                if (
-                    !Array.isArray(tags)
-                ) {
-
-                    return;
-
-                }
-
-
-                let modified =
-                    false;
-
-
-                const newTags = [];
-
-
-                tags.forEach(
-                    tag => {
-
-                        const normalized =
-                            normalizeTag(tag);
-
-
-                        if (
-                            tagsToMerge.some(
-                                selected =>
-                                    selected.toLowerCase() ===
-                                    normalized.toLowerCase()
-                            )
-                        ) {
-
-                            modified = true;
-
-                            changed++;
-
-                            return;
-
-                        }
-
-
-                        newTags.push(tag);
-
-                    }
+            const matchingTags =
+                tags.filter(tag =>
+                    tagsToMerge.some(
+                        selected =>
+                            selected.toLowerCase() ===
+                            normalizeTag(tag).toLowerCase()
+                    )
                 );
 
+            if (matchingTags.length === 0) {
+                continue;
+            }
 
-                if (modified) {
+            try {
 
-                    newTags.push(
+                if (
+                    typeof config.removeTag === "function"
+                ) {
+
+                    for (const tag of matchingTags) {
+
+                        await config.removeTag(
+                            item,
+                            tag
+                        );
+                    }
+                }
+
+                if (
+                    typeof config.addTag === "function"
+                ) {
+
+                    await config.addTag(
+                        item,
                         normalizedNewTag
                     );
+                }
 
-
-                    config.setTags(
-                        item,
-                        uniqueTags(
-                            newTags
+                const newTags =
+                    tags.filter(tag =>
+                        !tagsToMerge.some(
+                            selected =>
+                                selected.toLowerCase() ===
+                                normalizeTag(tag).toLowerCase()
                         )
                     );
 
-                }
+                newTags.push(normalizedNewTag);
 
+                config.setTags(
+                    item,
+                    uniqueTags(newTags)
+                );
+
+                changed++;
+
+            } catch (error) {
+
+                failed++;
+
+                console.error(
+                    "TagManager: merge failed.",
+                    error
+                );
             }
-        );
-
+        }
 
         selectedTags.clear();
 
-
         closeInternalModal();
 
+        if (changed === 0) {
 
-        notify(
-            changed === 0
-                ? "No items were changed."
-                : `Merged ${tagsToMerge.length} tags into "${normalizedNewTag}".`,
-            changed === 0
-                ? "info"
-                : "success"
-        );
+            notify(
+                failed
+                    ? "Tag merge failed."
+                    : "No items were changed.",
+                "error"
+            );
 
+        } else if (failed > 0) {
+
+            notify(
+                `Merged with ${failed} item${failed === 1 ? "" : "s"} failed.`,
+                "error"
+            );
+
+        } else {
+
+            notify(
+                `Merged ${tagsToMerge.length} tags into "${normalizedNewTag}".`,
+                "success"
+            );
+        }
 
         notifyChange();
-
 
         if (managerOpen) {
 
             refreshTags();
 
             renderManager();
-
         }
-
     }
 
 
     // ========================================================
-    // DELETE TAG
+    // DELETE MODAL
     // ========================================================
 
     function openDeleteModal() {
 
-        if (
-            selectedTags.size === 0
-        ) {
-
-            return;
-
-        }
-
+        if (selectedTags.size === 0) return;
 
         const tags =
             [...selectedTags];
 
-
         const tagList =
-            tags
-                .map(
-                    tag => `
+            tags.map(tag => `
 
-                        <span
-                            class="
-                                rounded-md
-                                bg-slate-800
-                                px-2 py-1
-                                text-[10px]
-                                text-slate-300
-                            "
-                        >
-                            ${escape(tag)}
-                        </span>
+                <span
+                    class="
+                        rounded-md
+                        bg-slate-800
+                        px-2 py-1
+                        text-[10px]
+                        text-slate-300
+                    "
+                >
+                    ${escape(tag)}
+                </span>
 
-                    `
-                )
-                .join("");
-
+            `).join("");
 
         const content = `
 
-            <div
-                class="space-y-4"
-            >
+            <div class="space-y-4">
 
                 <div>
 
                     <p
-                        class="mb-2
-                               text-xs
-                               text-slate-500"
+                        class="
+                            mb-2
+                            text-xs
+                            text-slate-500
+                        "
                     >
                         Tags to delete
                     </p>
 
-
-                    <div
-                        class="flex flex-wrap
-                               gap-1.5"
-                    >
+                    <div class="flex flex-wrap gap-1.5">
                         ${tagList}
                     </div>
 
                 </div>
 
-
                 <div
                     class="
                         rounded-lg
-                        border
-                        border-rose-500/20
+                        border border-rose-500/20
                         bg-rose-500/5
                         p-3
                     "
                 >
 
-                    <p
-                        class="text-[11px]
-                               text-rose-300"
-                    >
+                    <p class="text-[11px] text-rose-300">
                         These tags will be removed
                         from every item in the current
                         view.
@@ -1867,19 +1427,14 @@ const TagManager = (() => {
 
                 </div>
 
-
-                <div
-                    class="flex justify-end
-                           gap-2"
-                >
+                <div class="flex justify-end gap-2">
 
                     <button
                         type="button"
                         data-modal-close
                         class="
                             rounded-md
-                            border
-                            border-slate-700
+                            border border-slate-700
                             px-3 py-1.5
                             text-xs
                             text-slate-400
@@ -1888,7 +1443,6 @@ const TagManager = (() => {
                     >
                         Cancel
                     </button>
-
 
                     <button
                         type="button"
@@ -1912,28 +1466,20 @@ const TagManager = (() => {
 
         `;
 
-
         openInternalModal(
             "Delete Tags",
             content
         );
 
-
         document
-            .getElementById(
-                "tmConfirmDelete"
-            )
+            .getElementById("tmConfirmDelete")
             ?.addEventListener(
                 "click",
-                () => {
+                async () => {
 
-                    deleteTags(
-                        tags
-                    );
-
+                    await deleteTags(tags);
                 }
             );
-
     }
 
 
@@ -1941,116 +1487,119 @@ const TagManager = (() => {
     // DELETE IMPLEMENTATION
     // ========================================================
 
-    function deleteTags(
+    async function deleteTags(
         tagsToDelete
     ) {
 
         let changed = 0;
+        let failed = 0;
 
+        const items = getItems();
 
-        getItems().forEach(
-            item => {
+        for (const item of items) {
 
-                let tags;
+            let tags;
 
+            try {
+                tags = config.getTags(item);
+            } catch {
+                failed++;
+                continue;
+            }
 
-                try {
+            if (!Array.isArray(tags)) continue;
 
-                    tags =
-                        config.getTags(item);
+            const matchingTags =
+                tags.filter(tag =>
+                    tagsToDelete.some(
+                        selected =>
+                            selected.toLowerCase() ===
+                            normalizeTag(tag).toLowerCase()
+                    )
+                );
 
-                } catch {
+            if (matchingTags.length === 0) {
+                continue;
+            }
 
-                    return;
-
-                }
-
+            try {
 
                 if (
-                    !Array.isArray(tags)
+                    typeof config.removeTag === "function"
                 ) {
 
-                    return;
+                    for (const tag of matchingTags) {
 
+                        await config.removeTag(
+                            item,
+                            tag
+                        );
+                    }
                 }
-
 
                 const newTags =
-                    tags.filter(
-                        tag => {
-
-                            const normalized =
-                                normalizeTag(tag);
-
-
-                            const shouldDelete =
-                                tagsToDelete.some(
-                                    selected =>
-                                        selected.toLowerCase() ===
-                                        normalized.toLowerCase()
-                                );
-
-
-                            if (
-                                shouldDelete
-                            ) {
-
-                                changed++;
-
-                            }
-
-
-                            return !shouldDelete;
-
-                        }
-                    );
-
-
-                if (
-                    newTags.length !==
-                    tags.length
-                ) {
-
-                    config.setTags(
-                        item,
-                        uniqueTags(
-                            newTags
+                    tags.filter(tag =>
+                        !tagsToDelete.some(
+                            selected =>
+                                selected.toLowerCase() ===
+                                normalizeTag(tag).toLowerCase()
                         )
                     );
 
-                }
+                config.setTags(
+                    item,
+                    uniqueTags(newTags)
+                );
 
+                changed++;
+
+            } catch (error) {
+
+                failed++;
+
+                console.error(
+                    "TagManager: delete failed.",
+                    error
+                );
             }
-        );
-
+        }
 
         selectedTags.clear();
 
-
         closeInternalModal();
 
+        if (changed === 0) {
 
-        notify(
-            changed === 0
-                ? "No items were changed."
-                : `${tagsToDelete.length} tag${tagsToDelete.length === 1 ? "" : "s"} deleted.`,
-            changed === 0
-                ? "info"
-                : "success"
-        );
+            notify(
+                failed
+                    ? "Tag deletion failed."
+                    : "No items were changed.",
+                "error"
+            );
 
+        } else if (failed > 0) {
+
+            notify(
+                `Deleted tags with ${failed} item${failed === 1 ? "" : "s"} failed.`,
+                "error"
+            );
+
+        } else {
+
+            notify(
+                `${tagsToDelete.length} tag${tagsToDelete.length === 1 ? "" : "s"} deleted.`,
+                "success"
+            );
+        }
 
         notifyChange();
-
 
         if (managerOpen) {
 
             refreshTags();
 
             renderManager();
-
         }
-
     }
 
 
@@ -2061,25 +1610,22 @@ const TagManager = (() => {
     function notifyChange() {
 
         if (
-            typeof config?.onChange ===
-            "function"
+            typeof config?.onChange !== "function"
         ) {
-
-            try {
-
-                config.onChange();
-
-            } catch (error) {
-
-                console.error(
-                    "TagManager: onChange failed.",
-                    error
-                );
-
-            }
-
+            return;
         }
 
+        try {
+
+            config.onChange();
+
+        } catch (error) {
+
+            console.error(
+                "TagManager: onChange failed.",
+                error
+            );
+        }
     }
 
 
@@ -2093,8 +1639,7 @@ const TagManager = (() => {
     ) {
 
         if (
-            typeof window.openModal ===
-            "function"
+            typeof window.openModal === "function"
         ) {
 
             window.openModal(
@@ -2103,14 +1648,9 @@ const TagManager = (() => {
             );
 
             return;
-
         }
 
-
-        fallbackModal(
-            content
-        );
-
+        fallbackModal(content);
     }
 
 
@@ -2121,14 +1661,11 @@ const TagManager = (() => {
     function closeInternalModal() {
 
         if (
-            typeof window.closeModal ===
-            "function"
+            typeof window.closeModal === "function"
         ) {
 
             window.closeModal();
-
         }
-
     }
 
 
@@ -2136,28 +1673,20 @@ const TagManager = (() => {
     // FALLBACK MODAL
     // ========================================================
 
-    function fallbackModal(
-        content
-    ) {
+    function fallbackModal(content) {
 
         const existing =
             document.getElementById(
                 "tagManagerFallback"
             );
 
-
         existing?.remove();
 
-
         const wrapper =
-            document.createElement(
-                "div"
-            );
-
+            document.createElement("div");
 
         wrapper.id =
             "tagManagerFallback";
-
 
         wrapper.className = `
             fixed inset-0 z-[100]
@@ -2166,7 +1695,6 @@ const TagManager = (() => {
             backdrop-blur-sm
         `;
 
-
         wrapper.innerHTML = `
 
             <div
@@ -2174,8 +1702,7 @@ const TagManager = (() => {
                     w-full max-w-lg
                     overflow-hidden
                     rounded-xl
-                    border
-                    border-slate-700
+                    border border-slate-700
                     bg-slate-900
                     shadow-2xl
                 "
@@ -2185,8 +1712,7 @@ const TagManager = (() => {
                     class="
                         flex items-center
                         justify-between
-                        border-b
-                        border-slate-800
+                        border-b border-slate-800
                         px-4 py-3
                     "
                 >
@@ -2204,7 +1730,6 @@ const TagManager = (() => {
                         )}
                     </h3>
 
-
                     <button
                         type="button"
                         id="tmFallbackClose"
@@ -2221,13 +1746,11 @@ const TagManager = (() => {
 
                 </div>
 
-
                 <div
                     class="
                         max-h-[75vh]
                         overflow-y-auto
                         p-4
-                        
                     "
                 >
                     ${content}
@@ -2237,41 +1760,24 @@ const TagManager = (() => {
 
         `;
 
-
-        document.body.appendChild(
-            wrapper
-        );
-
+        document.body.appendChild(wrapper);
 
         wrapper
-            .querySelector(
-                "#tmFallbackClose"
-            )
+            .querySelector("#tmFallbackClose")
             ?.addEventListener(
                 "click",
-                () => {
-
-                    wrapper.remove();
-
-                }
+                () => wrapper.remove()
             );
-
 
         wrapper.addEventListener(
             "click",
             event => {
 
-                if (
-                    event.target === wrapper
-                ) {
-
+                if (event.target === wrapper) {
                     wrapper.remove();
-
                 }
-
             }
         );
-
     }
 
 
@@ -2279,13 +1785,9 @@ const TagManager = (() => {
     // DISABLED STYLE
     // ========================================================
 
-    function updateDisabledStyle(
-        button
-    ) {
+    function updateDisabledStyle(button) {
 
-        if (
-            button.disabled
-        ) {
+        if (button.disabled) {
 
             button.classList.add(
                 "cursor-not-allowed",
@@ -2298,9 +1800,7 @@ const TagManager = (() => {
                 "cursor-not-allowed",
                 "opacity-30"
             );
-
         }
-
     }
 
 
@@ -2308,14 +1808,11 @@ const TagManager = (() => {
     // NORMALIZE TAG
     // ========================================================
 
-    function normalizeTag(
-        tag
-    ) {
+    function normalizeTag(tag) {
 
         return String(
             tag ?? ""
         ).trim();
-
     }
 
 
@@ -2323,56 +1820,29 @@ const TagManager = (() => {
     // UNIQUE TAGS
     // ========================================================
 
-    function uniqueTags(
-        tags
-    ) {
+    function uniqueTags(tags) {
 
-        const seen =
-            new Set();
-
-
+        const seen = new Set();
         const result = [];
 
+        tags.forEach(tag => {
 
-        tags.forEach(
-            tag => {
+            const normalized =
+                normalizeTag(tag);
 
-                const normalized =
-                    normalizeTag(tag);
+            if (!normalized) return;
 
+            const key =
+                normalized.toLowerCase();
 
-                if (!normalized) {
+            if (seen.has(key)) return;
 
-                    return;
+            seen.add(key);
 
-                }
-
-
-                const key =
-                    normalized.toLowerCase();
-
-
-                if (
-                    seen.has(key)
-                ) {
-
-                    return;
-
-                }
-
-
-                seen.add(key);
-
-                result.push(
-                    normalized
-                );
-
-            }
-        );
-
+            result.push(normalized);
+        });
 
         return result;
-
     }
 
 
@@ -2380,21 +1850,15 @@ const TagManager = (() => {
     // CAPITALIZE
     // ========================================================
 
-    function capitalize(
-        value
-    ) {
+    function capitalize(value) {
 
         const text =
-            String(
-                value || ""
-            );
-
+            String(value || "");
 
         return text
             ? text.charAt(0).toUpperCase() +
               text.slice(1)
             : "";
-
     }
 
 
@@ -2402,46 +1866,22 @@ const TagManager = (() => {
     // ESCAPE HTML
     // ========================================================
 
-    function escape(
-        value
-    ) {
+    function escape(value) {
 
         if (
             typeof window.escapeHTML ===
             "function"
         ) {
 
-            return window.escapeHTML(
-                value
-            );
-
+            return window.escapeHTML(value);
         }
 
-
-        return String(
-            value ?? ""
-        )
-            .replaceAll(
-                "&",
-                "&amp;"
-            )
-            .replaceAll(
-                "<",
-                "&lt;"
-            )
-            .replaceAll(
-                ">",
-                "&gt;"
-            )
-            .replaceAll(
-                '"',
-                "&quot;"
-            )
-            .replaceAll(
-                "'",
-                "&#039;"
-            );
-
+        return String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
     }
 
 
@@ -2449,26 +1889,17 @@ const TagManager = (() => {
     // ESCAPE ATTRIBUTE
     // ========================================================
 
-    function escapeAttr(
-        value
-    ) {
+    function escapeAttr(value) {
 
         if (
             typeof window.escapeAttribute ===
             "function"
         ) {
 
-            return window.escapeAttribute(
-                value
-            );
-
+            return window.escapeAttribute(value);
         }
 
-
-        return escape(
-            value
-        );
-
+        return escape(value);
     }
 
 
@@ -2492,14 +1923,11 @@ const TagManager = (() => {
             );
 
             return;
-
         }
-
 
         console.log(
             `[TagManager] ${message}`
         );
-
     }
 
 
@@ -2516,25 +1944,15 @@ const TagManager = (() => {
         close,
 
         refresh: () => {
-
             refreshTags();
-
         },
 
         getTags: () => {
-
-            return [
-                ...getAllTags()
-            ];
-
+            return [...getAllTags()];
         },
 
         getSelectedTags: () => {
-
-            return [
-                ...selectedTags
-            ];
-
+            return [...selectedTags];
         },
 
         rename: renameTag,
@@ -2546,3 +1964,10 @@ const TagManager = (() => {
     };
 
 })();
+
+
+// ============================================================
+// GLOBAL EXPORT
+// ============================================================
+
+window.TagManager = TagManager;

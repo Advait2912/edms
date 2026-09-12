@@ -2,7 +2,6 @@
 // EDMS BOOKMARK VIEW
 // ============================================================
 
-
 // ============================================================
 // STATE
 // ============================================================
@@ -17,7 +16,6 @@ const selectedEndpointIds = new Set();
 
 let currentPage = 1;
 
-// 50 endpoints per page
 const PAGE_SIZE = 50;
 
 let sidebarCollapsed = false;
@@ -25,23 +23,16 @@ let sidebarCollapsed = false;
 let activeContextEndpoint = null;
 let activeContextQP = null;
 
-
 // ============================================================
 // FILTER STATE
 // ============================================================
 
 const activeFilters = {
-
     search: "",
-
     crud: "All CRUD",
-
     tags: new Set(),
-
     segments: new Set()
-
 };
-
 
 // ============================================================
 // DOM
@@ -121,7 +112,6 @@ const modalContent =
 
 let detailsFullscreenActive = false;
 
-
 // ============================================================
 // INIT
 // ============================================================
@@ -130,7 +120,6 @@ document.addEventListener(
     "DOMContentLoaded",
     init
 );
-
 
 async function init() {
 
@@ -143,57 +132,103 @@ async function init() {
         getItems: () => endpoints,
 
         getTags: endpoint => {
+
             return Array.isArray(endpoint.tags)
                 ? endpoint.tags
                 : [];
+
         },
 
         setTags: (endpoint, tags) => {
+
             endpoint.tags = tags;
+
+        },
+
+        addTag: async (endpoint, tag) => {
+
+            if (
+                !window.EdmsAPI ||
+                typeof window.EdmsAPI.addEndpointTag !==
+                    "function"
+            ) {
+
+                throw new Error(
+                    "Endpoint tag API is unavailable."
+                );
+
+            }
+
+            await window.EdmsAPI.addEndpointTag(
+                getBookmarkEndpointId(endpoint),
+                tag
+            );
+
+            if (!Array.isArray(endpoint.tags)) {
+                endpoint.tags = [];
+            }
+
+            if (!endpoint.tags.includes(tag)) {
+                endpoint.tags.push(tag);
+            }
+
+        },
+
+        removeTag: async (endpoint, tag) => {
+
+            if (
+                !window.EdmsAPI ||
+                typeof window.EdmsAPI.removeEndpointTag !==
+                    "function"
+            ) {
+
+                throw new Error(
+                    "Endpoint tag API is unavailable."
+                );
+
+            }
+
+            await window.EdmsAPI.removeEndpointTag(
+                getBookmarkEndpointId(endpoint),
+                tag
+            );
+
+            endpoint.tags =
+                Array.isArray(endpoint.tags)
+                    ? endpoint.tags.filter(
+                        item => item !== tag
+                    )
+                    : [];
+
         },
 
         onChange: () => {
+
             renderTags();
             updateStats();
             applyFilters();
+
         }
 
     });
 
-    
-
     setupFilters();
-
     setupSidebar();
-
     setupSelectionControls();
-
     setupModal();
-
     setupContextMenu();
-
     setupGlobalActions();
-
     setupDetailsViewer();
-
     makeColumnsResizable();
 
     renderTags();
-
     renderSegments();
-
     updateStats();
-
     renderTable();
-
     updateFooter();
-
     updateSelectionUI();
 
-    
-
 }
-
 
 // ============================================================
 // LOAD DATA
@@ -203,19 +238,13 @@ async function loadData() {
 
     try {
 
-        // ----------------------------------------------------
-        // FIRST: load the ACTIVE BOOKMARK workspace
-        // ----------------------------------------------------
-
         const bookmarkSnapshot =
             await loadBookmarksFromBackend();
-
 
         console.log(
             "BOOKMARK SNAPSHOT RECEIVED:",
             bookmarkSnapshot
         );
-
 
         const activeBookmarks =
             Array.isArray(
@@ -224,23 +253,10 @@ async function loadData() {
                 ? bookmarkSnapshot.bookmarks
                 : [];
 
-
         console.log(
             "ACTIVE COLLECTION:",
             bookmarkSnapshot?.active_collection
         );
-
-
-        console.log(
-            "ACTIVE BOOKMARKS:",
-            activeBookmarks
-        );
-
-
-        // ----------------------------------------------------
-        // If backend gave full endpoint data inside bookmarks,
-        // use it directly.
-        // ----------------------------------------------------
 
         endpoints =
             activeBookmarks
@@ -250,7 +266,6 @@ async function loadData() {
                         getBookmarkEndpointId(
                             bookmark
                         );
-
 
                     if (
                         endpointId === null ||
@@ -265,14 +280,6 @@ async function loadData() {
                         return null;
 
                     }
-
-
-                    /*
-                     * Some backend responses may contain
-                     * endpoint data directly in the bookmark.
-                     *
-                     * Keep whatever the backend actually gave us.
-                     */
 
                     return {
 
@@ -306,14 +313,14 @@ async function loadData() {
                             Array.isArray(
                                 bookmark?.tags
                             )
-                                ? bookmark.tags
+                                ? [...bookmark.tags]
                                 : [],
 
                         qps:
                             Array.isArray(
                                 bookmark?.qps
                             )
-                                ? bookmark.qps
+                                ? [...bookmark.qps]
                                 : [],
 
                         updated:
@@ -325,12 +332,6 @@ async function loadData() {
                 })
                 .filter(Boolean);
 
-
-        // ----------------------------------------------------
-        // SECOND: only if bookmarks contain IDs but no endpoint
-        // information, fetch the endpoint snapshot and merge it.
-        // ----------------------------------------------------
-
         const needsEndpointData =
             endpoints.some(
                 endpoint =>
@@ -338,27 +339,17 @@ async function loadData() {
                     !endpoint.method
             );
 
-
         if (needsEndpointData) {
 
             console.log(
                 "Bookmark data contains IDs only. Loading endpoint snapshot..."
             );
 
-
             const backendEndpoints =
                 await loadEndpointsFromBackend();
 
-
-            console.log(
-                "ENDPOINT SNAPSHOT:",
-                backendEndpoints
-            );
-
-
             const endpointMap =
                 new Map();
-
 
             backendEndpoints.forEach(
                 backendEndpoint => {
@@ -367,7 +358,6 @@ async function loadData() {
                         backendEndpoint?.id ??
                         backendEndpoint?.endpoint_id ??
                         backendEndpoint?.endpointId;
-
 
                     if (
                         endpointId !== null &&
@@ -384,7 +374,6 @@ async function loadData() {
                 }
             );
 
-
             endpoints =
                 endpoints.map(
                     bookmark => {
@@ -396,23 +385,13 @@ async function loadData() {
                                 )
                             );
 
-
                         if (!backendEndpoint) {
-
-                            console.warn(
-                                "No endpoint data found for bookmark:",
-                                bookmark
-                            );
-
                             return bookmark;
-
                         }
-
 
                         return {
 
                             ...backendEndpoint,
-
                             ...bookmark,
 
                             id:
@@ -470,16 +449,69 @@ async function loadData() {
 
         }
 
+        // ----------------------------------------------------
+        // Load authoritative endpoint tags
+        // ----------------------------------------------------
+
+        if (
+            window.EdmsAPI &&
+            typeof window.EdmsAPI.listEndpointTags ===
+                "function"
+        ) {
+
+            await Promise.all(
+                endpoints.map(
+                    async endpoint => {
+
+                        try {
+
+                            const result =
+                                await window.EdmsAPI
+                                    .listEndpointTags(
+                                        getBookmarkEndpointId(
+                                            endpoint
+                                        )
+                                    );
+
+                            const data =
+                                result?.data ??
+                                result;
+
+                            const backendTags =
+                                Array.isArray(data)
+                                    ? data
+                                    : Array.isArray(
+                                        data?.tags
+                                    )
+                                        ? data.tags
+                                        : [];
+
+                            endpoint.tags =
+                                [...backendTags];
+
+                        } catch (error) {
+
+                            console.warn(
+                                "Failed to load tags for endpoint:",
+                                endpoint.id,
+                                error
+                            );
+
+                        }
+
+                    }
+                )
+            );
+
+        }
 
         filteredEndpoints =
             [...endpoints];
-
 
         console.log(
             "FINAL BOOKMARK VIEW ENDPOINTS:",
             endpoints
         );
-
 
     } catch (error) {
 
@@ -488,11 +520,8 @@ async function loadData() {
             error
         );
 
-
         endpoints = [];
-
         filteredEndpoints = [];
-
 
         showToast(
             "Unable to load bookmark data.",
@@ -502,8 +531,9 @@ async function loadData() {
     }
 
 }
+
 // ============================================================
-// LOAD ENDPOINTS FROM BACKEND
+// LOAD ACTIVE BOOKMARKS
 // ============================================================
 
 function loadBookmarksFromBackend() {
@@ -527,47 +557,28 @@ function loadBookmarksFromBackend() {
 
             }
 
-
             const ws =
                 window.EdmsAPI.connectBookmarkLoader();
 
-
             let settled = false;
 
+            const finish =
+                (
+                    callback,
+                    value
+                ) => {
 
-            const finish = (
-                callback,
-                value
-            ) => {
+                    if (settled) return;
 
-                if (settled) return;
+                    settled = true;
 
-                settled = true;
+                    try {
+                        ws.close();
+                    } catch {}
 
+                    callback(value);
 
-                try {
-
-                    ws.close();
-
-                } catch {}
-
-
-                callback(value);
-
-            };
-
-
-            ws.addEventListener(
-                "open",
-                () => {
-
-                    console.log(
-                        "Bookmark WebSocket connected."
-                    );
-
-                }
-            );
-
+                };
 
             ws.addEventListener(
                 "message",
@@ -580,45 +591,25 @@ function loadBookmarksFromBackend() {
                                 event.data
                             );
 
-
                         console.log(
                             "BOOKMARK WS MESSAGE:",
                             message
                         );
 
-
                         if (
-                            message.type !==
-                            "snapshot"
-                        ) {
-
-                            return;
-
-                        }
-
-
-                        if (
-                            !Array.isArray(
+                            message.type ===
+                                "snapshot" &&
+                            Array.isArray(
                                 message.bookmarks
                             )
                         ) {
 
                             finish(
-                                reject,
-                                new Error(
-                                    "Bookmark snapshot contains no bookmarks array."
-                                )
+                                resolve,
+                                message
                             );
 
-                            return;
-
                         }
-
-
-                        finish(
-                            resolve,
-                            message
-                        );
 
                     } catch (error) {
 
@@ -632,7 +623,6 @@ function loadBookmarksFromBackend() {
                 }
             );
 
-
             ws.addEventListener(
                 "error",
                 error => {
@@ -641,7 +631,6 @@ function loadBookmarksFromBackend() {
                         "Bookmark WebSocket error:",
                         error
                     );
-
 
                     finish(
                         reject,
@@ -652,7 +641,6 @@ function loadBookmarksFromBackend() {
 
                 }
             );
-
 
             ws.addEventListener(
                 "close",
@@ -677,128 +665,110 @@ function loadBookmarksFromBackend() {
 
 }
 
-
-
-
 // ============================================================
-// LOAD ACTIVE BOOKMARKS FROM BACKEND
+// LOAD ENDPOINT SNAPSHOT
 // ============================================================
 
-function loadBookmarksFromBackend() {
+function loadEndpointsFromBackend() {
 
-    return new Promise((resolve, reject) => {
+    return new Promise(
+        (resolve, reject) => {
 
-        if (
-            !window.EdmsAPI ||
-            typeof window.EdmsAPI.connectBookmarkLoader !==
-                "function"
-        ) {
+            if (
+                !window.EdmsAPI ||
+                typeof window.EdmsAPI.connectEndpointLoader !==
+                    "function"
+            ) {
 
-            reject(
-                new Error(
-                    "Bookmark loader API is unavailable."
-                )
-            );
+                reject(
+                    new Error(
+                        "Endpoint loader API is unavailable."
+                    )
+                );
 
-            return;
+                return;
 
-        }
+            }
 
+            const ws =
+                window.EdmsAPI.connectEndpointLoader();
 
-        const ws =
-            window.EdmsAPI.connectBookmarkLoader();
+            let settled = false;
 
+            const finish =
+                (
+                    callback,
+                    value
+                ) => {
 
-        let settled = false;
+                    if (settled) return;
 
+                    settled = true;
 
-        const finish = (
-            callback,
-            value
-        ) => {
+                    try {
+                        ws.close();
+                    } catch {}
 
-            if (settled) return;
+                    callback(value);
 
-            settled = true;
+                };
 
+            ws.addEventListener(
+                "message",
+                event => {
 
-            try {
+                    try {
 
-                ws.close();
+                        const message =
+                            JSON.parse(
+                                event.data
+                            );
 
-            } catch {}
+                        if (
+                            message.type ===
+                                "snapshot" &&
+                            Array.isArray(
+                                message.endpoints
+                            )
+                        ) {
 
+                            finish(
+                                resolve,
+                                message.endpoints
+                            );
 
-            callback(value);
+                        }
 
-        };
-
-
-        ws.addEventListener(
-            "message",
-            event => {
-
-                try {
-
-                    const message =
-                        JSON.parse(
-                            event.data
-                        );
-
-
-                    console.log(
-                        "Bookmark WebSocket message:",
-                        message
-                    );
-
-
-                    if (
-                        message.type ===
-                            "snapshot" &&
-                        Array.isArray(
-                            message.bookmarks
-                        )
-                    ) {
+                    } catch (error) {
 
                         finish(
-                            resolve,
-                            message
+                            reject,
+                            error
                         );
 
                     }
 
+                }
+            );
 
-                } catch (error) {
+            ws.addEventListener(
+                "error",
+                () => {
 
                     finish(
                         reject,
-                        error
+                        new Error(
+                            "Endpoint WebSocket failed."
+                        )
                     );
 
                 }
+            );
 
-            }
-        );
-
-
-        ws.addEventListener(
-            "error",
-            () => {
-
-                finish(
-                    reject,
-                    new Error(
-                        "Bookmark WebSocket failed."
-                    )
-                );
-
-            }
-        );
-
-    });
+        }
+    );
 
 }
-
 
 // ============================================================
 // BOOKMARK ENDPOINT ID
@@ -825,6 +795,7 @@ function getBookmarkEndpointId(bookmark) {
         bookmark.id ??
         null
     );
+
 }
 
 // ============================================================
@@ -834,7 +805,9 @@ function getBookmarkEndpointId(bookmark) {
 function setupFilters() {
 
     const searchInput =
-        document.getElementById("searchInput");
+        document.getElementById(
+            "searchInput"
+        );
 
     if (searchInput) {
 
@@ -856,9 +829,10 @@ function setupFilters() {
 
     }
 
-
     const crudFilter =
-        document.getElementById("crudFilter");
+        document.getElementById(
+            "crudFilter"
+        );
 
     if (crudFilter) {
 
@@ -878,9 +852,10 @@ function setupFilters() {
 
     }
 
-
     const resetButton =
-        document.getElementById("resetFilters");
+        document.getElementById(
+            "resetFilters"
+        );
 
     if (resetButton) {
 
@@ -893,7 +868,6 @@ function setupFilters() {
 
 }
 
-
 // ============================================================
 // APPLY FILTERS
 // ============================================================
@@ -901,122 +875,97 @@ function setupFilters() {
 function applyFilters() {
 
     filteredEndpoints =
-        endpoints.filter(endpoint => {
+        endpoints.filter(
+            endpoint => {
 
-            const search =
-                activeFilters.search;
+                const search =
+                    activeFilters.search;
 
+                const matchesSearch =
+                    !search ||
 
-            // --------------------------------------------------
-            // Search
-            // --------------------------------------------------
+                    String(endpoint.id || "")
+                        .toLowerCase()
+                        .includes(search) ||
 
-            const matchesSearch =
-                !search ||
+                    String(endpoint.method || "")
+                        .toLowerCase()
+                        .includes(search) ||
 
-                String(endpoint.id || "")
-                    .toLowerCase()
-                    .includes(search) ||
+                    String(endpoint.endpoint || "")
+                        .toLowerCase()
+                        .includes(search) ||
 
-                String(endpoint.method || "")
-                    .toLowerCase()
-                    .includes(search) ||
+                    String(endpoint.annotation || "")
+                        .toLowerCase()
+                        .includes(search) ||
 
-                String(endpoint.endpoint || "")
-                    .toLowerCase()
-                    .includes(search) ||
-
-                String(endpoint.annotation || "")
-                    .toLowerCase()
-                    .includes(search) ||
-
-                (
-                    Array.isArray(endpoint.tags) &&
-                    endpoint.tags.some(
-                        tag =>
-                            String(tag)
-                                .toLowerCase()
-                                .includes(search)
-                    )
-                );
-
-
-            // --------------------------------------------------
-            // CRUD
-            // --------------------------------------------------
-
-            const matchesCRUD =
-                activeFilters.crud === "All CRUD" ||
-                endpoint.method ===
-                    activeFilters.crud;
-
-
-            // --------------------------------------------------
-            // Tags
-            // --------------------------------------------------
-
-            const matchesTags =
-                activeFilters.tags.size === 0 ||
-
-                (
-                    Array.isArray(endpoint.tags) &&
-                    [...activeFilters.tags]
-                        .every(
+                    (
+                        Array.isArray(endpoint.tags) &&
+                        endpoint.tags.some(
                             tag =>
-                                endpoint.tags.includes(tag)
+                                String(tag)
+                                    .toLowerCase()
+                                    .includes(search)
                         )
-                );
-
-
-            // --------------------------------------------------
-            // Segments
-            // --------------------------------------------------
-
-            const endpointSegments =
-                getEndpointSegments(
-                    endpoint.endpoint
-                );
-
-            const matchesSegments =
-                activeFilters.segments.size === 0 ||
-
-                [...activeFilters.segments]
-                    .every(
-                        segment =>
-                            endpointSegments
-                                .includes(segment)
                     );
 
+                const matchesCRUD =
+                    activeFilters.crud === "All CRUD" ||
+                    endpoint.method ===
+                        activeFilters.crud;
 
-            return (
-                matchesSearch &&
-                matchesCRUD &&
-                matchesTags &&
-                matchesSegments
-            );
+                const matchesTags =
+                    activeFilters.tags.size === 0 ||
+                    (
+                        Array.isArray(endpoint.tags) &&
+                        [...activeFilters.tags]
+                            .every(
+                                tag =>
+                                    endpoint.tags.includes(
+                                        tag
+                                    )
+                            )
+                    );
 
-        });
+                const endpointSegments =
+                    getEndpointSegments(
+                        endpoint.endpoint
+                    );
 
+                const matchesSegments =
+                    activeFilters.segments.size === 0 ||
+                    [...activeFilters.segments]
+                        .every(
+                            segment =>
+                                endpointSegments.includes(
+                                    segment
+                                )
+                        );
+
+                return (
+                    matchesSearch &&
+                    matchesCRUD &&
+                    matchesTags &&
+                    matchesSegments
+                );
+
+            }
+        );
 
     currentPage = Math.min(
         currentPage,
         getTotalPages()
     );
 
-
     if (currentPage < 1) {
-
         currentPage = 1;
-
     }
 
-
     renderTable();
-
     updateFooter();
 
 }
-
 
 // ============================================================
 // RESET FILTERS
@@ -1025,50 +974,44 @@ function applyFilters() {
 function resetFilters() {
 
     activeFilters.search = "";
-
     activeFilters.crud = "All CRUD";
 
     activeFilters.tags.clear();
-
     activeFilters.segments.clear();
 
-
     const searchInput =
-        document.getElementById("searchInput");
+        document.getElementById(
+            "searchInput"
+        );
 
     if (searchInput) {
-
         searchInput.value = "";
-
     }
-
 
     const crudFilter =
-        document.getElementById("crudFilter");
+        document.getElementById(
+            "crudFilter"
+        );
 
     if (crudFilter) {
-
         crudFilter.value = "All CRUD";
-
     }
-
 
     document
         .querySelectorAll(
             ".tag-checkbox, .segment-checkbox"
         )
         .forEach(
-            checkbox =>
-                checkbox.checked = false
+            checkbox => {
+                checkbox.checked = false;
+            }
         );
-
 
     currentPage = 1;
 
     applyFilters();
 
 }
-
 
 // ============================================================
 // SEGMENTS
@@ -1082,7 +1025,6 @@ function getEndpointSegments(endpointPath) {
 
 }
 
-
 // ============================================================
 // TAGS
 // ============================================================
@@ -1090,7 +1032,9 @@ function getEndpointSegments(endpointPath) {
 function renderTags() {
 
     const container =
-        document.getElementById("tagsContainer");
+        document.getElementById(
+            "tagsContainer"
+        );
 
     if (!container) return;
 
@@ -1098,130 +1042,138 @@ function renderTags() {
 
     const tagCounts = {};
 
-    endpoints.forEach(endpoint => {
+    endpoints.forEach(
+        endpoint => {
 
-        if (!Array.isArray(endpoint.tags)) {
-            return;
+            if (!Array.isArray(endpoint.tags)) {
+                return;
+            }
+
+            endpoint.tags.forEach(
+                tag => {
+
+                    if (!tag) return;
+
+                    tagCounts[tag] =
+                        (tagCounts[tag] || 0) + 1;
+
+                }
+            );
+
         }
-
-        endpoint.tags.forEach(tag => {
-
-            if (!tag) return;
-
-            tagCounts[tag] =
-                (tagCounts[tag] || 0) + 1;
-
-        });
-
-    });
-
+    );
 
     Object.entries(tagCounts)
-        .sort((a, b) =>
-            a[0].localeCompare(b[0])
+        .sort(
+            (a, b) =>
+                a[0].localeCompare(
+                    b[0]
+                )
         )
-        .forEach(([tag, count]) => {
+        .forEach(
+            ([tag, count]) => {
 
-            const wrapper =
-                document.createElement("label");
-
-            wrapper.className =
-                "group flex cursor-pointer items-center gap-2";
-
-
-            wrapper.innerHTML = `
-
-                <input
-                    type="checkbox"
-                    class="tag-checkbox h-3.5 w-3.5
-                           accent-cyan-400"
-                    data-tag="${escapeAttribute(tag)}"
-                >
-
-                <button
-                    type="button"
-                    class="tag-filter-button min-w-0 flex-1
-                           truncate rounded px-1.5 py-1 text-left
-                           text-[11px] text-slate-400
-                           transition hover:bg-sky-500/10
-                           hover:text-sky-300"
-                    data-tag="${escapeAttribute(tag)}"
-                >
-                    ${escapeHTML(tag)}
-                    <span class="text-slate-600">
-                        (${count})
-                    </span>
-                </button>
-
-            `;
-
-
-            const checkbox =
-                wrapper.querySelector(
-                    ".tag-checkbox"
-                );
-
-            const tagButton =
-                wrapper.querySelector(
-                    ".tag-filter-button"
-                );
-
-
-            checkbox.addEventListener(
-                "change",
-                () => {
-
-                    setTagFilter(
-                        tag,
-                        checkbox.checked
+                const wrapper =
+                    document.createElement(
+                        "label"
                     );
 
-                }
-            );
+                wrapper.className =
+                    "group flex cursor-pointer items-center gap-2";
 
+                wrapper.innerHTML = `
 
-            tagButton.addEventListener(
-                "click",
-                event => {
+                    <input
+                        type="checkbox"
+                        class="tag-checkbox h-3.5 w-3.5
+                               accent-cyan-400"
+                        data-tag="${escapeAttribute(tag)}"
+                    >
 
-                    event.preventDefault();
+                    <button
+                        type="button"
+                        class="tag-filter-button min-w-0 flex-1
+                               truncate rounded px-1.5 py-1
+                               text-left text-[11px]
+                               text-slate-400 transition
+                               hover:bg-sky-500/10
+                               hover:text-sky-300"
+                        data-tag="${escapeAttribute(tag)}"
+                    >
+                        ${escapeHTML(tag)}
+                        <span class="text-slate-600">
+                            (${count})
+                        </span>
+                    </button>
 
-                    const checked =
-                        !activeFilters.tags.has(tag);
+                `;
 
-                    checkbox.checked =
-                        checked;
-
-                    setTagFilter(
-                        tag,
-                        checked
+                const checkbox =
+                    wrapper.querySelector(
+                        ".tag-checkbox"
                     );
 
-                }
-            );
+                const tagButton =
+                    wrapper.querySelector(
+                        ".tag-filter-button"
+                    );
 
+                checkbox.addEventListener(
+                    "change",
+                    () => {
 
-            container.appendChild(wrapper);
+                        setTagFilter(
+                            tag,
+                            checkbox.checked
+                        );
 
-        });
+                    }
+                );
+
+                tagButton.addEventListener(
+                    "click",
+                    event => {
+
+                        event.preventDefault();
+
+                        const checked =
+                            !activeFilters.tags.has(
+                                tag
+                            );
+
+                        checkbox.checked =
+                            checked;
+
+                        setTagFilter(
+                            tag,
+                            checked
+                        );
+
+                    }
+                );
+
+                container.appendChild(
+                    wrapper
+                );
+
+            }
+        );
 
 }
-
 
 // ============================================================
 // TAG FILTER
 // ============================================================
 
-function setTagFilter(tag, enabled) {
+function setTagFilter(
+    tag,
+    enabled
+) {
 
     if (enabled) {
-
         activeFilters.tags.add(tag);
-
     } else {
-
         activeFilters.tags.delete(tag);
-
     }
 
     currentPage = 1;
@@ -1230,9 +1182,8 @@ function setTagFilter(tag, enabled) {
 
 }
 
-
 // ============================================================
-// SEGMENTS
+// SEGMENT SIDEBAR
 // ============================================================
 
 function renderSegments() {
@@ -1248,117 +1199,119 @@ function renderSegments() {
 
     const segmentCounts = {};
 
+    endpoints.forEach(
+        endpoint => {
 
-    endpoints.forEach(endpoint => {
+            getEndpointSegments(
+                endpoint.endpoint
+            ).forEach(
+                segment => {
 
-        getEndpointSegments(
-            endpoint.endpoint
-        ).forEach(segment => {
+                    segmentCounts[segment] =
+                        (segmentCounts[segment] || 0) + 1;
 
-            segmentCounts[segment] =
-                (segmentCounts[segment] || 0) + 1;
+                }
+            );
 
-        });
-
-    });
-
+        }
+    );
 
     Object.entries(segmentCounts)
-        .sort((a, b) =>
-            a[0].localeCompare(b[0])
+        .sort(
+            (a, b) =>
+                a[0].localeCompare(
+                    b[0]
+                )
         )
-        .forEach(([segment, count]) => {
+        .forEach(
+            ([segment, count]) => {
 
-            const wrapper =
-                document.createElement("label");
-
-            wrapper.className =
-                "group flex cursor-pointer items-center gap-2";
-
-
-            wrapper.innerHTML = `
-
-                <input
-                    type="checkbox"
-                    class="segment-checkbox h-3.5 w-3.5
-                           accent-cyan-400"
-                    data-segment="${escapeAttribute(segment)}"
-                >
-
-                <button
-                    type="button"
-                    class="segment-filter-button min-w-0
-                           flex-1 truncate rounded px-1.5 py-1
-                           text-left text-[11px]
-                           text-slate-400 transition
-                           hover:bg-cyan-500/10
-                           hover:text-cyan-300"
-                    data-segment="${escapeAttribute(segment)}"
-                >
-                    ${escapeHTML(segment)}
-                    <span class="text-slate-600">
-                        (${count})
-                    </span>
-                </button>
-
-            `;
-
-
-            const checkbox =
-                wrapper.querySelector(
-                    ".segment-checkbox"
-                );
-
-            const segmentButton =
-                wrapper.querySelector(
-                    ".segment-filter-button"
-                );
-
-
-            checkbox.addEventListener(
-                "change",
-                () => {
-
-                    setSegmentFilter(
-                        segment,
-                        checkbox.checked
+                const wrapper =
+                    document.createElement(
+                        "label"
                     );
 
-                }
-            );
+                wrapper.className =
+                    "group flex cursor-pointer items-center gap-2";
 
+                wrapper.innerHTML = `
 
-            segmentButton.addEventListener(
-                "click",
-                event => {
+                    <input
+                        type="checkbox"
+                        class="segment-checkbox h-3.5 w-3.5
+                               accent-cyan-400"
+                        data-segment="${escapeAttribute(segment)}"
+                    >
 
-                    event.preventDefault();
+                    <button
+                        type="button"
+                        class="segment-filter-button min-w-0
+                               flex-1 truncate rounded px-1.5 py-1
+                               text-left text-[11px]
+                               text-slate-400 transition
+                               hover:bg-cyan-500/10
+                               hover:text-cyan-300"
+                        data-segment="${escapeAttribute(segment)}"
+                    >
+                        ${escapeHTML(segment)}
+                        <span class="text-slate-600">
+                            (${count})
+                        </span>
+                    </button>
 
-                    const checked =
-                        !activeFilters.segments
-                            .has(segment);
+                `;
 
-                    checkbox.checked =
-                        checked;
-
-                    setSegmentFilter(
-                        segment,
-                        checked
+                const checkbox =
+                    wrapper.querySelector(
+                        ".segment-checkbox"
                     );
 
-                }
-            );
+                const segmentButton =
+                    wrapper.querySelector(
+                        ".segment-filter-button"
+                    );
 
+                checkbox.addEventListener(
+                    "change",
+                    () => {
 
-            container.appendChild(wrapper);
+                        setSegmentFilter(
+                            segment,
+                            checkbox.checked
+                        );
 
-        });
+                    }
+                );
+
+                segmentButton.addEventListener(
+                    "click",
+                    event => {
+
+                        event.preventDefault();
+
+                        const checked =
+                            !activeFilters.segments
+                                .has(segment);
+
+                        checkbox.checked =
+                            checked;
+
+                        setSegmentFilter(
+                            segment,
+                            checked
+                        );
+
+                    }
+                );
+
+                container.appendChild(
+                    wrapper
+                );
+
+            }
+        );
 
 }
-
-
-
-
 
 // ============================================================
 // SEGMENT FILTER
@@ -1370,17 +1323,13 @@ function setSegmentFilter(
 ) {
 
     if (enabled) {
-
         activeFilters.segments.add(
             segment
         );
-
     } else {
-
         activeFilters.segments.delete(
             segment
         );
-
     }
 
     currentPage = 1;
@@ -1388,7 +1337,6 @@ function setSegmentFilter(
     applyFilters();
 
 }
-
 
 // ============================================================
 // TABLE
@@ -1400,10 +1348,8 @@ function renderTable() {
 
     tableBody.innerHTML = "";
 
-
     const pageItems =
         getCurrentPageItems();
-
 
     if (pageItems.length === 0) {
 
@@ -1416,9 +1362,7 @@ function renderTable() {
                     class="px-4 py-16 text-center"
                 >
 
-                    <div
-                        class="mx-auto max-w-xs"
-                    >
+                    <div class="mx-auto max-w-xs">
 
                         <p
                             class="text-sm font-medium
@@ -1447,20 +1391,19 @@ function renderTable() {
 
     }
 
+    pageItems.forEach(
+        endpoint => {
 
-    pageItems.forEach(endpoint => {
+            tableBody.appendChild(
+                createRow(endpoint)
+            );
 
-        tableBody.appendChild(
-            createRow(endpoint)
-        );
-
-    });
-
+        }
+    );
 
     updateSelectAllState();
 
 }
-
 
 // ============================================================
 // CREATE ROW
@@ -1471,16 +1414,13 @@ function createRow(endpoint) {
     const row =
         document.createElement("tr");
 
-
     const isSelected =
         selectedEndpointIds.has(
             getEndpointKey(endpoint)
         );
 
-
     const isActive =
         selectedEndpoint === endpoint;
-
 
     row.className =
         [
@@ -1502,16 +1442,11 @@ function createRow(endpoint) {
             .filter(Boolean)
             .join(" ");
 
-
     row.dataset.id =
         getEndpointKey(endpoint);
 
-    row.endpoint = endpoint;
-
-
-    // ----------------------------------------------------------
-    // Method
-    // ----------------------------------------------------------
+    row.endpoint =
+        endpoint;
 
     let methodColor =
         "text-white";
@@ -1545,36 +1480,30 @@ function createRow(endpoint) {
 
     }
 
-
-    // ----------------------------------------------------------
-    // Tags
-    // ----------------------------------------------------------
-
     const tagsHTML =
         Array.isArray(endpoint.tags)
-
             ? endpoint.tags
-                .map(tag => `
+                .map(
+                    tag => `
 
-                    <button
-                        type="button"
-                        class="row-tag mr-1 inline-flex
-                               rounded bg-sky-900/40
-                               px-1.5 py-0.5 text-[10px]
-                               text-sky-300
-                               transition
-                               hover:bg-sky-500/20
-                               hover:text-sky-200"
-                        data-tag="${escapeAttribute(tag)}"
-                    >
-                        ${escapeHTML(tag)}
-                    </button>
+                        <button
+                            type="button"
+                            class="row-tag mr-1 inline-flex
+                                   rounded bg-sky-900/40
+                                   px-1.5 py-0.5 text-[10px]
+                                   text-sky-300
+                                   transition
+                                   hover:bg-sky-500/20
+                                   hover:text-sky-200"
+                            data-tag="${escapeAttribute(tag)}"
+                        >
+                            ${escapeHTML(tag)}
+                        </button>
 
-                `)
+                    `
+                )
                 .join("")
-
             : "";
-
 
     row.innerHTML = `
 
@@ -1589,18 +1518,15 @@ function createRow(endpoint) {
 
         </td>
 
-
         <td class="px-2 py-2 font-mono text-slate-500">
             ${escapeHTML(endpoint.id)}
         </td>
-
 
         <td
             class="px-2 py-2 font-semibold ${methodColor}"
         >
             ${escapeHTML(endpoint.method)}
         </td>
-
 
         <td
             class="endpoint-cell px-2 py-2 font-mono
@@ -1617,13 +1543,11 @@ function createRow(endpoint) {
             </button>
         </td>
 
-
         <td class="px-2 py-2">
             <div class="flex flex-wrap gap-y-1">
                 ${tagsHTML}
             </div>
         </td>
-
 
         <td class="px-2 py-2 text-center">
 
@@ -1642,7 +1566,6 @@ function createRow(endpoint) {
 
         </td>
 
-
         <td
             class="px-2 py-2 text-[11px]
                    text-slate-500"
@@ -1659,7 +1582,6 @@ function createRow(endpoint) {
             </span>
         </td>
 
-
         <td
             class="px-2 py-2 text-[10px]
                    text-slate-600"
@@ -1669,26 +1591,17 @@ function createRow(endpoint) {
 
     `;
 
-
-    // ----------------------------------------------------------
-    // Checkbox
-    // ----------------------------------------------------------
-
     const checkbox =
         row.querySelector(
             ".row-checkbox"
         );
 
-
     checkbox.addEventListener(
         "click",
         event => {
-
             event.stopPropagation();
-
         }
     );
-
 
     checkbox.addEventListener(
         "change",
@@ -1701,49 +1614,39 @@ function createRow(endpoint) {
         }
     );
 
-
-    // ----------------------------------------------------------
-    // Tags
-    // ----------------------------------------------------------
-
     row.querySelectorAll(
         ".row-tag"
-    ).forEach(button => {
+    ).forEach(
+        button => {
 
-        button.addEventListener(
-            "click",
-            event => {
+            button.addEventListener(
+                "click",
+                event => {
 
-                event.stopPropagation();
+                    event.stopPropagation();
 
-                const tag =
-                    button.dataset.tag;
+                    const tag =
+                        button.dataset.tag;
 
-                activeFilters.tags.clear();
+                    activeFilters.tags.clear();
+                    activeFilters.tags.add(tag);
 
-                activeFilters.tags.add(tag);
+                    syncFilterCheckboxes();
 
-                syncFilterCheckboxes();
+                    currentPage = 1;
 
-                currentPage = 1;
+                    applyFilters();
 
-                applyFilters();
+                }
+            );
 
-            }
-        );
-
-    });
-
-
-    // ----------------------------------------------------------
-    // Endpoint segment click
-    // ----------------------------------------------------------
+        }
+    );
 
     const endpointButton =
         row.querySelector(
             ".row-segment-trigger"
         );
-
 
     endpointButton.addEventListener(
         "click",
@@ -1758,11 +1661,6 @@ function createRow(endpoint) {
         }
     );
 
-
-    // ----------------------------------------------------------
-    // Normal row click
-    // ----------------------------------------------------------
-
     row.addEventListener(
         "click",
         () => {
@@ -1774,11 +1672,6 @@ function createRow(endpoint) {
 
         }
     );
-
-
-    // ----------------------------------------------------------
-    // RMB
-    // ----------------------------------------------------------
 
     row.addEventListener(
         "contextmenu",
@@ -1800,11 +1693,9 @@ function createRow(endpoint) {
         }
     );
 
-
     return row;
 
 }
-
 
 // ============================================================
 // ENDPOINT SELECTION
@@ -1817,26 +1708,17 @@ function toggleEndpointSelection(
     const key =
         getEndpointKey(endpoint);
 
-
     if (selectedEndpointIds.has(key)) {
-
         selectedEndpointIds.delete(key);
-
     } else {
-
         selectedEndpointIds.add(key);
-
     }
 
-
     updateSelectionUI();
-
     updateSelectAllState();
-
     renderTable();
 
 }
-
 
 // ============================================================
 // SELECT ENDPOINT
@@ -1852,22 +1734,13 @@ function selectEndpoint(
 
     selectedQP = null;
 
-
     if (deleteQPButton) {
-
-        deleteQPButton.disabled =
-            true;
-
+        deleteQPButton.disabled = true;
     }
-
 
     if (addQPButton) {
-
-        addQPButton.disabled =
-            false;
-
+        addQPButton.disabled = false;
     }
-
 
     document
         .querySelectorAll(
@@ -1883,16 +1756,13 @@ function selectEndpoint(
             }
         );
 
-
     row.classList.add(
         "bg-sky-500/[0.08]"
     );
 
-
     renderQP(endpoint);
 
 }
-
 
 // ============================================================
 // QP PANEL
@@ -1903,7 +1773,6 @@ function renderQP(endpoint) {
     if (!qpPanel) return;
 
     qpPanel.innerHTML = "";
-
 
     if (
         !endpoint ||
@@ -1926,24 +1795,22 @@ function renderQP(endpoint) {
 
     }
 
-
     endpoint.qps.forEach(
         (qp, index) => {
 
             const button =
-                document.createElement("button");
-
+                document.createElement(
+                    "button"
+                );
 
             const qpId =
                 qp.id ?? index + 1;
-
 
             button.type =
                 "button";
 
             button.dataset.qp =
                 qpId;
-
 
             button.className =
                 [
@@ -1965,10 +1832,8 @@ function renderQP(endpoint) {
                     "hover:text-cyan-300"
                 ].join(" ");
 
-
             button.textContent =
                 qpId;
-
 
             if (
                 selectedQP &&
@@ -1987,7 +1852,6 @@ function renderQP(endpoint) {
 
             }
 
-
             button.addEventListener(
                 "click",
                 event => {
@@ -2002,13 +1866,11 @@ function renderQP(endpoint) {
                 }
             );
 
-
             button.addEventListener(
                 "contextmenu",
                 event => {
 
                     event.preventDefault();
-
                     event.stopPropagation();
 
                     activeContextEndpoint =
@@ -2027,14 +1889,14 @@ function renderQP(endpoint) {
                 }
             );
 
-
-            qpPanel.appendChild(button);
+            qpPanel.appendChild(
+                button
+            );
 
         }
     );
 
 }
-
 
 // ============================================================
 // SELECT QP
@@ -2048,14 +1910,9 @@ function selectQP(
     selectedQP =
         qp;
 
-
     if (deleteQPButton) {
-
-        deleteQPButton.disabled =
-            false;
-
+        deleteQPButton.disabled = false;
     }
-
 
     document
         .querySelectorAll(
@@ -2077,7 +1934,6 @@ function selectQP(
             }
         );
 
-
     button.classList.remove(
         "bg-slate-800",
         "text-slate-400"
@@ -2088,11 +1944,9 @@ function selectQP(
         "text-white"
     );
 
-
     showRequestResponse(qp);
 
 }
-
 
 // ============================================================
 // REQUEST / RESPONSE
@@ -2104,17 +1958,11 @@ function showRequestResponse(qp) {
         return;
     }
 
-
     const request =
         qp.request || {};
 
     const response =
         qp.response || {};
-
-
-    // ----------------------------------------------------------
-    // Request
-    // ----------------------------------------------------------
 
     if (requestEndpoint) {
 
@@ -2122,7 +1970,6 @@ function showRequestResponse(qp) {
             `${selectedEndpoint.method} ${selectedEndpoint.endpoint}`;
 
     }
-
 
     if (requestHeaders) {
 
@@ -2133,7 +1980,6 @@ function showRequestResponse(qp) {
 
     }
 
-
     if (requestQuery) {
 
         requestQuery.textContent =
@@ -2142,7 +1988,6 @@ function showRequestResponse(qp) {
             );
 
     }
-
 
     if (requestPath) {
 
@@ -2153,7 +1998,6 @@ function showRequestResponse(qp) {
 
     }
 
-
     if (requestBody) {
 
         requestBody.textContent =
@@ -2163,18 +2007,12 @@ function showRequestResponse(qp) {
 
     }
 
-
-    // ----------------------------------------------------------
-    // Response
-    // ----------------------------------------------------------
-
     if (responseStatus) {
 
         responseStatus.textContent =
             response.status
                 ? String(response.status)
                 : "—";
-
 
         responseStatus.className =
             [
@@ -2188,7 +2026,6 @@ function showRequestResponse(qp) {
 
     }
 
-
     if (responseHeaders) {
 
         responseHeaders.textContent =
@@ -2197,7 +2034,6 @@ function showRequestResponse(qp) {
             );
 
     }
-
 
     if (responseBody) {
 
@@ -2208,7 +2044,6 @@ function showRequestResponse(qp) {
 
     }
 
-
     if (responseTime) {
 
         responseTime.textContent =
@@ -2217,7 +2052,6 @@ function showRequestResponse(qp) {
                 : "—";
 
     }
-
 
     if (responsePayload) {
 
@@ -2228,14 +2062,12 @@ function showRequestResponse(qp) {
 
     }
 
-
     if (responseServer) {
 
         responseServer.textContent =
             response.server || "—";
 
     }
-
 
     if (detailsOverlay) {
 
@@ -2246,7 +2078,6 @@ function showRequestResponse(qp) {
     }
 
 }
-
 
 // ============================================================
 // REQUEST / RESPONSE VIEWER CONTROLS
@@ -2259,12 +2090,10 @@ function setupDetailsViewer() {
         hideRequestResponse
     );
 
-
     detailsFullscreen?.addEventListener(
         "click",
         toggleDetailsFullscreen
     );
-
 
     detailsOverlay?.addEventListener(
         "click",
@@ -2272,7 +2101,8 @@ function setupDetailsViewer() {
 
             if (
                 event.target === detailsOverlay ||
-                event.target === detailsOverlay.firstElementChild
+                event.target ===
+                    detailsOverlay.firstElementChild
             ) {
 
                 hideRequestResponse();
@@ -2284,7 +2114,6 @@ function setupDetailsViewer() {
 
 }
 
-
 // ============================================================
 // TOGGLE FULLSCREEN
 // ============================================================
@@ -2295,10 +2124,8 @@ function toggleDetailsFullscreen() {
         return;
     }
 
-
     detailsFullscreenActive =
         !detailsFullscreenActive;
-
 
     if (detailsFullscreenActive) {
 
@@ -2310,14 +2137,12 @@ function toggleDetailsFullscreen() {
             "rounded-xl"
         );
 
-
         detailsPanel.classList.add(
             "inset-0",
             "h-full",
             "w-full",
             "rounded-none"
         );
-
 
         if (detailsFullscreenIcon) {
 
@@ -2330,12 +2155,10 @@ function toggleDetailsFullscreen() {
 
         }
 
-
         detailsFullscreen?.setAttribute(
             "title",
             "Exit full screen"
         );
-
 
     } else {
 
@@ -2346,7 +2169,6 @@ function toggleDetailsFullscreen() {
             "rounded-none"
         );
 
-
         detailsPanel.classList.add(
             "bottom-4",
             "right-4",
@@ -2354,7 +2176,6 @@ function toggleDetailsFullscreen() {
             "w-[min(1100px,calc(100vw-32px))]",
             "rounded-xl"
         );
-
 
         if (detailsFullscreenIcon) {
 
@@ -2367,7 +2188,6 @@ function toggleDetailsFullscreen() {
 
         }
 
-
         detailsFullscreen?.setAttribute(
             "title",
             "Full screen"
@@ -2376,7 +2196,6 @@ function toggleDetailsFullscreen() {
     }
 
 }
-
 
 // ============================================================
 // CLOSE DETAILS
@@ -2388,11 +2207,9 @@ function hideRequestResponse() {
         return;
     }
 
-
     detailsOverlay.classList.add(
         "hidden"
     );
-
 
     if (
         detailsFullscreenActive &&
@@ -2402,14 +2219,12 @@ function hideRequestResponse() {
         detailsFullscreenActive =
             false;
 
-
         detailsPanel.classList.remove(
             "inset-0",
             "h-full",
             "w-full",
             "rounded-none"
         );
-
 
         detailsPanel.classList.add(
             "bottom-4",
@@ -2419,12 +2234,10 @@ function hideRequestResponse() {
             "rounded-xl"
         );
 
-
         detailsFullscreen?.setAttribute(
             "title",
             "Full screen"
         );
-
 
         if (detailsFullscreenIcon) {
 
@@ -2440,7 +2253,6 @@ function hideRequestResponse() {
     }
 
 }
-
 
 // ============================================================
 // RESET DETAILS
@@ -2453,27 +2265,19 @@ function resetDetails() {
     hideRequestResponse();
 
     if (deleteQPButton) {
-
-        deleteQPButton.disabled =
-            true;
-
+        deleteQPButton.disabled = true;
     }
-
 
     if (addQPButton) {
-
         addQPButton.disabled =
             !selectedEndpoint;
-
     }
-
 
     renderQP(
         selectedEndpoint
     );
 
 }
-
 
 // ============================================================
 // DELETE SELECTED QP
@@ -2492,38 +2296,31 @@ if (deleteQPButton) {
                 return;
             }
 
-
             const qps =
                 selectedEndpoint.qps;
-
 
             if (!Array.isArray(qps)) {
                 return;
             }
-
 
             const index =
                 qps.indexOf(
                     selectedQP
                 );
 
-
             if (index === -1) {
                 return;
             }
-
 
             qps.splice(
                 index,
                 1
             );
 
-
             showToast(
                 "QP removed.",
                 "success"
             );
-
 
             resetDetails();
 
@@ -2533,7 +2330,6 @@ if (deleteQPButton) {
     );
 
 }
-
 
 // ============================================================
 // ADD QP
@@ -2556,7 +2352,6 @@ if (addQPButton) {
 
 }
 
-
 // ============================================================
 // ADD QP MODAL
 // ============================================================
@@ -2566,6 +2361,7 @@ function openAddQPModal() {
     openModal(
         "Add Query Parameter",
         `
+
             <div class="space-y-4">
 
                 <div>
@@ -2589,7 +2385,6 @@ function openAddQPModal() {
 
                 </div>
 
-
                 <div
                     class="rounded-lg border
                            border-slate-800
@@ -2605,7 +2400,6 @@ function openAddQPModal() {
                     </p>
 
                 </div>
-
 
                 <div class="flex justify-end gap-2">
 
@@ -2635,9 +2429,9 @@ function openAddQPModal() {
                 </div>
 
             </div>
+
         `
     );
-
 
     document
         .getElementById(
@@ -2652,10 +2446,8 @@ function openAddQPModal() {
                         "newQPName"
                     );
 
-
                 const name =
                     input?.value.trim();
-
 
                 if (!name) {
 
@@ -2668,7 +2460,6 @@ function openAddQPModal() {
 
                 }
 
-
                 if (
                     !Array.isArray(
                         selectedEndpoint.qps
@@ -2679,23 +2470,18 @@ function openAddQPModal() {
 
                 }
 
-
                 const nextId =
-                    selectedEndpoint.qps
-                        .reduce(
-                            (
+                    selectedEndpoint.qps.reduce(
+                        (
+                            max,
+                            qp
+                        ) =>
+                            Math.max(
                                 max,
-                                qp
-                            ) =>
-                                Math.max(
-                                    max,
-                                    Number(
-                                        qp.id
-                                    ) || 0
-                                ),
-                            0
-                        ) + 1;
-
+                                Number(qp.id) || 0
+                            ),
+                        0
+                    ) + 1;
 
                 selectedEndpoint.qps.push({
 
@@ -2708,7 +2494,6 @@ function openAddQPModal() {
                     response: {}
 
                 });
-
 
                 closeModal();
 
@@ -2728,7 +2513,6 @@ function openAddQPModal() {
 
 }
 
-
 // ============================================================
 // PAGINATION
 // ============================================================
@@ -2745,13 +2529,11 @@ function getTotalPages() {
 
 }
 
-
 function getCurrentPageItems() {
 
     const start =
         (currentPage - 1) *
         PAGE_SIZE;
-
 
     return filteredEndpoints.slice(
         start,
@@ -2759,7 +2541,6 @@ function getCurrentPageItems() {
     );
 
 }
-
 
 function renderPagination() {
 
@@ -2772,10 +2553,8 @@ function renderPagination() {
 
     container.innerHTML = "";
 
-
     const totalPages =
         getTotalPages();
-
 
     const createButton =
         (
@@ -2790,13 +2569,11 @@ function renderPagination() {
                     "button"
                 );
 
-
             button.type =
                 "button";
 
             button.textContent =
                 label;
-
 
             button.className =
                 [
@@ -2816,10 +2593,8 @@ function renderPagination() {
                     .filter(Boolean)
                     .join(" ");
 
-
             button.disabled =
                 disabled;
-
 
             button.addEventListener(
                 "click",
@@ -2829,17 +2604,14 @@ function renderPagination() {
                         page;
 
                     renderTable();
-
                     updateFooter();
 
                 }
             );
 
-
             return button;
 
         };
-
 
     container.appendChild(
         createButton(
@@ -2849,13 +2621,11 @@ function renderPagination() {
         )
     );
 
-
     const pages =
         getPaginationPages(
             currentPage,
             totalPages
         );
-
 
     pages.forEach(
         page => {
@@ -2881,7 +2651,6 @@ function renderPagination() {
 
             }
 
-
             container.appendChild(
                 createButton(
                     String(page),
@@ -2894,7 +2663,6 @@ function renderPagination() {
         }
     );
 
-
     container.appendChild(
         createButton(
             "›",
@@ -2904,7 +2672,6 @@ function renderPagination() {
     );
 
 }
-
 
 function getPaginationPages(
     current,
@@ -2923,18 +2690,11 @@ function getPaginationPages(
 
     }
 
-
-    const pages = [
-        1
-    ];
-
+    const pages = [1];
 
     if (current > 4) {
-
         pages.push("...");
-
     }
-
 
     const start =
         Math.max(
@@ -2942,13 +2702,11 @@ function getPaginationPages(
             current - 1
         );
 
-
     const end =
         Math.min(
             total - 1,
             current + 1
         );
-
 
     for (
         let page = start;
@@ -2960,21 +2718,15 @@ function getPaginationPages(
 
     }
 
-
     if (current < total - 3) {
-
         pages.push("...");
-
     }
 
-
     pages.push(total);
-
 
     return pages;
 
 }
-
 
 // ============================================================
 // FOOTER
@@ -2992,31 +2744,22 @@ function updateFooter() {
             "totalEndpoints"
         );
 
-
     const pageItems =
         getCurrentPageItems();
 
-
     if (showing) {
-
         showing.textContent =
             pageItems.length;
-
     }
-
 
     if (total) {
-
         total.textContent =
             filteredEndpoints.length;
-
     }
-
 
     renderPagination();
 
 }
-
 
 // ============================================================
 // STATS
@@ -3039,22 +2782,16 @@ function updateStats() {
             "segmentStat"
         );
 
-
     if (endpointStat) {
-
         endpointStat.textContent =
             endpoints.length;
-
     }
-
 
     const uniqueTags =
         new Set();
 
-
     const uniqueSegments =
         new Set();
-
 
     endpoints.forEach(
         endpoint => {
@@ -3072,7 +2809,6 @@ function updateStats() {
 
             }
 
-
             getEndpointSegments(
                 endpoint.endpoint
             ).forEach(
@@ -3085,24 +2821,17 @@ function updateStats() {
         }
     );
 
-
     if (tagStat) {
-
         tagStat.textContent =
             uniqueTags.size;
-
     }
 
-
     if (segmentStat) {
-
         segmentStat.textContent =
             uniqueSegments.size;
-
     }
 
 }
-
 
 // ============================================================
 // SIDEBAR
@@ -3115,9 +2844,7 @@ function setupSidebar() {
             "sidebarToggle"
         );
 
-
     if (!toggle) return;
-
 
     toggle.addEventListener(
         "click",
@@ -3125,7 +2852,6 @@ function setupSidebar() {
     );
 
 }
-
 
 function toggleSidebar() {
 
@@ -3149,10 +2875,10 @@ function toggleSidebar() {
             "sidebarToggleIcon"
         );
 
+    if (!sidebar) return;
 
     sidebarCollapsed =
         !sidebarCollapsed;
-
 
     if (sidebarCollapsed) {
 
@@ -3164,20 +2890,21 @@ function toggleSidebar() {
             "w-10"
         );
 
-
-        content.classList.add(
+        content?.classList.add(
             "hidden"
         );
 
-        title.classList.add(
+        title?.classList.add(
             "hidden"
         );
 
+        if (icon) {
 
-        icon.innerHTML = `
-            <path d="m9 18 6-6-6-6"/>
-        `;
+            icon.innerHTML = `
+                <path d="m9 18 6-6-6-6"/>
+            `;
 
+        }
 
     } else {
 
@@ -3189,24 +2916,25 @@ function toggleSidebar() {
             "w-48"
         );
 
-
-        content.classList.remove(
+        content?.classList.remove(
             "hidden"
         );
 
-        title.classList.remove(
+        title?.classList.remove(
             "hidden"
         );
 
+        if (icon) {
 
-        icon.innerHTML = `
-            <path d="m15 18-6-6 6-6"/>
-        `;
+            icon.innerHTML = `
+                <path d="m15 18-6-6 6-6"/>
+            `;
+
+        }
 
     }
 
 }
-
 
 // ============================================================
 // MULTI SELECTION
@@ -3219,7 +2947,6 @@ function setupSelectionControls() {
             "selectAll"
         );
 
-
     if (selectAll) {
 
         selectAll.addEventListener(
@@ -3229,7 +2956,6 @@ function setupSelectionControls() {
                 const pageItems =
                     getCurrentPageItems();
 
-
                 pageItems.forEach(
                     endpoint => {
 
@@ -3237,7 +2963,6 @@ function setupSelectionControls() {
                             getEndpointKey(
                                 endpoint
                             );
-
 
                         if (
                             selectAll.checked
@@ -3256,16 +2981,13 @@ function setupSelectionControls() {
                     }
                 );
 
-
                 updateSelectionUI();
-
                 renderTable();
 
             }
         );
 
     }
-
 
     document
         .getElementById(
@@ -3278,17 +3000,14 @@ function setupSelectionControls() {
 
 }
 
-
 function clearSelection() {
 
     selectedEndpointIds.clear();
 
     updateSelectionUI();
-
     renderTable();
 
 }
-
 
 function updateSelectionUI() {
 
@@ -3317,10 +3036,8 @@ function updateSelectionUI() {
             "downloadSelected"
         );
 
-
     const selected =
         getSelectedEndpoints();
-
 
     if (selected.length === 0) {
 
@@ -3344,14 +3061,12 @@ function updateSelectionUI() {
 
     }
 
-
     if (count) {
 
         count.textContent =
             `${selected.length} selected`;
 
     }
-
 
     if (list) {
 
@@ -3378,27 +3093,19 @@ function updateSelectionUI() {
 
     }
 
-
     if (deleteButton) {
-
         deleteButton.disabled =
             selected.length === 0;
-
     }
-
 
     if (downloadButton) {
-
         downloadButton.disabled =
             selected.length === 0;
-
     }
-
 
     updateSelectAllState();
 
 }
-
 
 function updateSelectAllState() {
 
@@ -3407,13 +3114,10 @@ function updateSelectAllState() {
             "selectAll"
         );
 
-
     if (!checkbox) return;
-
 
     const pageItems =
         getCurrentPageItems();
-
 
     const selectedCount =
         pageItems.filter(
@@ -3423,18 +3127,15 @@ function updateSelectAllState() {
                 )
         ).length;
 
-
     checkbox.checked =
         pageItems.length > 0 &&
         selectedCount === pageItems.length;
-
 
     checkbox.indeterminate =
         selectedCount > 0 &&
         selectedCount < pageItems.length;
 
 }
-
 
 function getSelectedEndpoints() {
 
@@ -3446,7 +3147,6 @@ function getSelectedEndpoints() {
     );
 
 }
-
 
 // ============================================================
 // GLOBAL ACTIONS
@@ -3463,7 +3163,6 @@ function setupGlobalActions() {
             openBulkDeleteModal
         );
 
-
     document
         .getElementById(
             "downloadSelected"
@@ -3475,7 +3174,6 @@ function setupGlobalActions() {
 
 }
 
-
 // ============================================================
 // BULK DELETE
 // ============================================================
@@ -3485,11 +3183,9 @@ function openBulkDeleteModal() {
     const selected =
         getSelectedEndpoints();
 
-
     if (selected.length === 0) {
         return;
     }
-
 
     openModal(
         "Delete Endpoints",
@@ -3508,11 +3204,10 @@ function openBulkDeleteModal() {
                     >
                         ${selected.length}
                         endpoint(s) will be removed
-                        from the current view.
+                        from the current bookmark view.
                     </p>
 
                 </div>
-
 
                 <div
                     class="max-h-48 overflow-y-auto
@@ -3559,7 +3254,6 @@ function openBulkDeleteModal() {
 
                 </div>
 
-
                 <div class="flex justify-end gap-2">
 
                     <button
@@ -3579,9 +3273,8 @@ function openBulkDeleteModal() {
                         type="button"
                         class="rounded-md
                                bg-rose-600
-                               px-3 py-1.5
-                               text-xs font-medium
-                               text-white
+                               px-3 py-1.5 text-xs
+                               font-medium text-white
                                hover:bg-rose-500"
                     >
                         Delete
@@ -3594,84 +3287,112 @@ function openBulkDeleteModal() {
         `
     );
 
-
     document
         .getElementById(
             "confirmBulkDelete"
         )
         ?.addEventListener(
             "click",
-            () => {
+            async () => {
 
-                const ids =
-                    new Set(
-                        selected.map(
-                            endpoint =>
-                                getEndpointKey(
-                                    endpoint
-                                )
-                        )
+                const button =
+                    document.getElementById(
+                        "confirmBulkDelete"
                     );
 
-
-                endpoints =
-                    endpoints.filter(
-                        endpoint =>
-                            !ids.has(
-                                getEndpointKey(
-                                    endpoint
-                                )
-                            )
-                    );
-
-
-                selectedEndpointIds.clear();
-
-
-                if (
-                    selectedEndpoint &&
-                    ids.has(
-                        getEndpointKey(
-                            selectedEndpoint
-                        )
-                    )
-                ) {
-
-                    selectedEndpoint =
-                        null;
-
-                    selectedQP =
-                        null;
-
-                    resetDetails();
-
-                    renderQP(null);
-
+                if (button) {
+                    button.disabled = true;
                 }
 
+                try {
 
-                closeModal();
+                    for (
+                        const endpoint of selected
+                    ) {
 
-                renderTags();
+                        await deleteActiveBookmark(
+                            getBookmarkEndpointId(
+                                endpoint
+                            )
+                        );
 
-                renderSegments();
+                    }
 
-                updateStats();
+                    const ids =
+                        new Set(
+                            selected.map(
+                                endpoint =>
+                                    getEndpointKey(
+                                        endpoint
+                                    )
+                            )
+                        );
 
-                applyFilters();
+                    endpoints =
+                        endpoints.filter(
+                            endpoint =>
+                                !ids.has(
+                                    getEndpointKey(
+                                        endpoint
+                                    )
+                                )
+                        );
 
-                updateSelectionUI();
+                    selectedEndpointIds.clear();
 
-                showToast(
-                    "Selected endpoints removed.",
-                    "success"
-                );
+                    if (
+                        selectedEndpoint &&
+                        ids.has(
+                            getEndpointKey(
+                                selectedEndpoint
+                            )
+                        )
+                    ) {
+
+                        selectedEndpoint = null;
+                        selectedQP = null;
+
+                        resetDetails();
+                        renderQP(null);
+
+                    }
+
+                    closeModal();
+
+                    renderTags();
+                    renderSegments();
+                    updateStats();
+                    applyFilters();
+                    updateSelectionUI();
+
+                    showToast(
+                        "Selected endpoints removed.",
+                        "success"
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "Bulk bookmark deletion failed:",
+                        error
+                    );
+
+                    if (button) {
+                        button.disabled = false;
+                    }
+
+                    showToast(
+                        error.message ||
+                            "Failed to delete selected endpoints.",
+                        "error"
+                    );
+
+                }
 
             }
         );
 
 }
-
 
 // ============================================================
 // DOWNLOAD
@@ -3682,11 +3403,9 @@ function downloadSelectedEndpoints() {
     const selected =
         getSelectedEndpoints();
 
-
     if (selected.length === 0) {
         return;
     }
-
 
     const blob =
         new Blob(
@@ -3706,25 +3425,21 @@ function downloadSelectedEndpoints() {
             }
         );
 
-
     const url =
         URL.createObjectURL(
             blob
         );
-
 
     const anchor =
         document.createElement(
             "a"
         );
 
-
     anchor.href =
         url;
 
     anchor.download =
         "edms-selected-endpoints.json";
-
 
     document.body.appendChild(
         anchor
@@ -3734,11 +3449,9 @@ function downloadSelectedEndpoints() {
 
     anchor.remove();
 
-
     URL.revokeObjectURL(
         url
     );
-
 
     showToast(
         "Selected endpoints downloaded.",
@@ -3746,7 +3459,6 @@ function downloadSelectedEndpoints() {
     );
 
 }
-
 
 // ============================================================
 // CONTEXT MENU
@@ -3759,13 +3471,11 @@ function setupContextMenu() {
         closeContextMenu
     );
 
-
     window.addEventListener(
         "scroll",
         closeContextMenu,
         true
     );
-
 
     window.addEventListener(
         "resize",
@@ -3774,7 +3484,6 @@ function setupContextMenu() {
 
 }
 
-
 function openEndpointContextMenu(
     x,
     y,
@@ -3782,7 +3491,6 @@ function openEndpointContextMenu(
 ) {
 
     if (!contextMenu) return;
-
 
     contextMenu.innerHTML = `
 
@@ -3793,21 +3501,15 @@ function openEndpointContextMenu(
         )}
 
         ${contextMenuItem(
-            "tags",
-            "Edit Tags",
-            iconTag()
-        )}
-
-        ${contextMenuItem(
-            "annotation",
-            "Edit Annotation",
+            "modify",
+            "Modify Data",
             iconEdit()
         )}
 
         ${contextMenuItem(
-            "duplicate",
-            "Duplicate",
-            iconCopy()
+            "tags",
+            "Edit Tags",
+            iconTag()
         )}
 
         <div class="my-1 border-t border-slate-800"></div>
@@ -3821,12 +3523,10 @@ function openEndpointContextMenu(
 
     `;
 
-
     showContextMenu(
         x,
         y
     );
-
 
     bindContextAction(
         "select",
@@ -3839,6 +3539,16 @@ function openEndpointContextMenu(
         }
     );
 
+    bindContextAction(
+        "modify",
+        () => {
+
+            openModifyDataModal(
+                endpoint
+            );
+
+        }
+    );
 
     bindContextAction(
         "tags",
@@ -3850,31 +3560,6 @@ function openEndpointContextMenu(
 
         }
     );
-
-
-    bindContextAction(
-        "annotation",
-        () => {
-
-            openAnnotationEditor(
-                endpoint
-            );
-
-        }
-    );
-
-
-    bindContextAction(
-        "duplicate",
-        () => {
-
-            duplicateEndpoint(
-                endpoint
-            );
-
-        }
-    );
-
 
     bindContextAction(
         "delete",
@@ -3889,6 +3574,9 @@ function openEndpointContextMenu(
 
 }
 
+// ============================================================
+// QP CONTEXT MENU
+// ============================================================
 
 function openQPContextMenu(
     x,
@@ -3898,7 +3586,6 @@ function openQPContextMenu(
 ) {
 
     if (!contextMenu) return;
-
 
     contextMenu.innerHTML = `
 
@@ -3914,12 +3601,6 @@ function openQPContextMenu(
             iconEdit()
         )}
 
-        ${contextMenuItem(
-            "duplicate",
-            "Duplicate QP",
-            iconCopy()
-        )}
-
         <div class="my-1 border-t border-slate-800"></div>
 
         ${contextMenuItem(
@@ -3931,31 +3612,29 @@ function openQPContextMenu(
 
     `;
 
-
     showContextMenu(
         x,
         y
     );
-
 
     bindContextAction(
         "open",
         () => {
 
             const button =
-                [...document.querySelectorAll(
-                    ".qp-btn"
-                )]
-                    .find(
-                        item =>
-                            String(
-                                item.dataset.qp
-                            ) ===
-                            String(
-                                qp.id
-                            )
-                    );
-
+                [
+                    ...document.querySelectorAll(
+                        ".qp-btn"
+                    )
+                ].find(
+                    item =>
+                        String(
+                            item.dataset.qp
+                        ) ===
+                        String(
+                            qp.id
+                        )
+                );
 
             if (button) {
 
@@ -3969,7 +3648,6 @@ function openQPContextMenu(
         }
     );
 
-
     bindContextAction(
         "edit",
         () => {
@@ -3981,20 +3659,6 @@ function openQPContextMenu(
 
         }
     );
-
-
-    bindContextAction(
-        "duplicate",
-        () => {
-
-            duplicateQP(
-                endpoint,
-                qp
-            );
-
-        }
-    );
-
 
     bindContextAction(
         "delete",
@@ -4010,6 +3674,9 @@ function openQPContextMenu(
 
 }
 
+// ============================================================
+// CONTEXT MENU ITEM
+// ============================================================
 
 function contextMenuItem(
     id,
@@ -4041,7 +3708,6 @@ function contextMenuItem(
 
 }
 
-
 function bindContextAction(
     id,
     callback
@@ -4066,23 +3732,22 @@ function bindContextAction(
 
 }
 
-
 function showContextMenu(
     x,
     y
 ) {
 
+    if (!contextMenu) return;
+
     contextMenu.classList.remove(
         "hidden"
     );
-
 
     const menuWidth =
         192;
 
     const menuHeight =
         contextMenu.offsetHeight;
-
 
     const left =
         Math.min(
@@ -4092,7 +3757,6 @@ function showContextMenu(
                 8
         );
 
-
     const top =
         Math.min(
             y,
@@ -4100,7 +3764,6 @@ function showContextMenu(
                 menuHeight -
                 8
         );
-
 
     contextMenu.style.left =
         `${Math.max(8, left)}px`;
@@ -4110,7 +3773,6 @@ function showContextMenu(
 
 }
 
-
 function closeContextMenu() {
 
     contextMenu?.classList.add(
@@ -4119,6 +3781,394 @@ function closeContextMenu() {
 
 }
 
+// ============================================================
+// MODIFY DATA
+// ============================================================
+
+function openModifyDataModal(
+    endpoint
+) {
+
+    const tags =
+        Array.isArray(endpoint.tags)
+            ? endpoint.tags.join(", ")
+            : "";
+
+    openModal(
+        `Modify Data — ${endpoint.id}`,
+        `
+
+            <div class="space-y-4">
+
+                <div>
+
+                    <label
+                        class="mb-1 block text-xs
+                               text-slate-500"
+                    >
+                        Endpoint
+                    </label>
+
+                    <input
+                        id="modifyEndpoint"
+                        value="${escapeAttribute(
+                            endpoint.endpoint || ""
+                        )}"
+                        class="h-9 w-full rounded-md
+                               border border-slate-700
+                               bg-slate-950 px-3 text-xs
+                               outline-none
+                               focus:border-cyan-500"
+                    >
+
+                </div>
+
+                <div>
+
+                    <label
+                        class="mb-1 block text-xs
+                               text-slate-500"
+                    >
+                        Method
+                    </label>
+
+                    <select
+                        id="modifyMethod"
+                        class="h-9 w-full rounded-md
+                               border border-slate-700
+                               bg-slate-950 px-3 text-xs
+                               text-slate-300 outline-none
+                               focus:border-cyan-500"
+                    >
+
+                        ${[
+                            "GET",
+                            "POST",
+                            "PUT",
+                            "PATCH",
+                            "DELETE",
+                            "HEAD",
+                            "OPTIONS"
+                        ]
+                            .map(
+                                method => `
+
+                                    <option
+                                        value="${method}"
+                                        ${
+                                            endpoint.method ===
+                                            method
+                                                ? "selected"
+                                                : ""
+                                        }
+                                    >
+                                        ${method}
+                                    </option>
+
+                                `
+                            )
+                            .join("")}
+
+                    </select>
+
+                </div>
+
+                <div>
+
+                    <label
+                        class="mb-1 block text-xs
+                               text-slate-500"
+                    >
+                        Annotation
+                    </label>
+
+                    <textarea
+                        id="modifyAnnotation"
+                        rows="4"
+                        class="w-full resize-y rounded-md
+                               border border-slate-700
+                               bg-slate-950 p-3 text-xs
+                               leading-5 text-slate-300
+                               outline-none
+                               focus:border-cyan-500"
+                    >${escapeHTML(
+                        endpoint.annotation || ""
+                    )}</textarea>
+
+                </div>
+
+                <div>
+
+                    <label
+                        class="mb-1 block text-xs
+                               text-slate-500"
+                    >
+                        Tags
+                    </label>
+
+                    <input
+                        id="modifyTags"
+                        value="${escapeAttribute(
+                            tags
+                        )}"
+                        class="h-9 w-full rounded-md
+                               border border-slate-700
+                               bg-slate-950 px-3 text-xs
+                               outline-none
+                               focus:border-cyan-500"
+                        placeholder="tag1, tag2"
+                    >
+
+                    <p
+                        class="mt-1 text-[10px]
+                               text-slate-600"
+                    >
+                        Separate tags with commas.
+                    </p>
+
+                </div>
+
+                <div
+                    class="rounded-lg border
+                           border-slate-800
+                           bg-slate-950/40 p-3"
+                >
+
+                    <p
+                        class="text-[10px]
+                               leading-4 text-slate-500"
+                    >
+                        Endpoint, method and annotation
+                        are editable in the current
+                        Bookmark workspace. Tags are
+                        synchronized with the backend.
+                    </p>
+
+                </div>
+
+                <div class="flex justify-end gap-2">
+
+                    <button
+                        type="button"
+                        data-modal-close
+                        class="rounded-md border
+                               border-slate-700
+                               px-3 py-1.5 text-xs
+                               text-slate-400
+                               hover:bg-slate-800"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        id="saveModifyData"
+                        type="button"
+                        class="rounded-md bg-cyan-600
+                               px-3 py-1.5 text-xs
+                               font-medium text-white
+                               hover:bg-cyan-500"
+                    >
+                        Save
+                    </button>
+
+                </div>
+
+            </div>
+
+        `
+    );
+
+    document
+        .getElementById(
+            "saveModifyData"
+        )
+        ?.addEventListener(
+            "click",
+            async () => {
+
+                const saveButton =
+                    document.getElementById(
+                        "saveModifyData"
+                    );
+
+                const endpointInput =
+                    document.getElementById(
+                        "modifyEndpoint"
+                    );
+
+                const methodInput =
+                    document.getElementById(
+                        "modifyMethod"
+                    );
+
+                const annotationInput =
+                    document.getElementById(
+                        "modifyAnnotation"
+                    );
+
+                const tagsInput =
+                    document.getElementById(
+                        "modifyTags"
+                    );
+
+                const newTags =
+                    tagsInput.value
+                        .split(",")
+                        .map(
+                            tag =>
+                                tag.trim()
+                        )
+                        .filter(Boolean);
+
+                const oldTags =
+                    Array.isArray(
+                        endpoint.tags
+                    )
+                        ? [...endpoint.tags]
+                        : [];
+
+                if (saveButton) {
+                    saveButton.disabled = true;
+                    saveButton.textContent =
+                        "Saving...";
+                }
+
+                try {
+
+                    // ----------------------------------------
+                    // Local workspace fields
+                    // ----------------------------------------
+
+                    endpoint.endpoint =
+                        endpointInput.value.trim();
+
+                    endpoint.method =
+                        methodInput.value;
+
+                    endpoint.annotation =
+                        annotationInput.value.trim();
+
+                    // ----------------------------------------
+                    // Backend tag synchronization
+                    // ----------------------------------------
+
+                    const oldTagSet =
+                        new Set(oldTags);
+
+                    const newTagSet =
+                        new Set(newTags);
+
+                    const tagsToAdd =
+                        newTags.filter(
+                            tag =>
+                                !oldTagSet.has(tag)
+                        );
+
+                    const tagsToRemove =
+                        oldTags.filter(
+                            tag =>
+                                !newTagSet.has(tag)
+                        );
+
+                    if (
+                        window.EdmsAPI &&
+                        typeof window.EdmsAPI.addEndpointTag ===
+                            "function" &&
+                        typeof window.EdmsAPI.removeEndpointTag ===
+                            "function"
+                    ) {
+
+                        for (
+                            const tag of tagsToAdd
+                        ) {
+
+                            await window.EdmsAPI
+                                .addEndpointTag(
+                                    getBookmarkEndpointId(
+                                        endpoint
+                                    ),
+                                    tag
+                                );
+
+                        }
+
+                        for (
+                            const tag of tagsToRemove
+                        ) {
+
+                            await window.EdmsAPI
+                                .removeEndpointTag(
+                                    getBookmarkEndpointId(
+                                        endpoint
+                                    ),
+                                    tag
+                                );
+
+                        }
+
+                    }
+
+                    endpoint.tags =
+                        newTags;
+
+                    endpoint.updated =
+                        new Date().toISOString();
+
+                    closeModal();
+
+                    renderTags();
+                    renderSegments();
+                    updateStats();
+                    applyFilters();
+
+                    if (
+                        selectedEndpoint ===
+                        endpoint &&
+                        selectedQP
+                    ) {
+
+                        showRequestResponse(
+                            selectedQP
+                        );
+
+                    }
+
+                    showToast(
+                        "Endpoint data updated.",
+                        "success"
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "Failed to update endpoint data:",
+                        error
+                    );
+
+                    // Restore local tag state if backend
+                    // synchronization failed.
+
+                    endpoint.tags =
+                        oldTags;
+
+                    if (saveButton) {
+                        saveButton.disabled = false;
+                        saveButton.textContent =
+                            "Save";
+                    }
+
+                    showToast(
+                        error.message ||
+                            "Failed to update endpoint data.",
+                        "error"
+                    );
+
+                }
+
+            }
+        );
+
+}
 
 // ============================================================
 // TAG EDITOR
@@ -4134,7 +4184,6 @@ function openTagEditor(
         )
             ? endpoint.tags.join(", ")
             : "";
-
 
     openModal(
         `Edit Tags — ${endpoint.id}`,
@@ -4172,7 +4221,6 @@ function openTagEditor(
 
                 </div>
 
-
                 <div class="flex justify-end gap-2">
 
                     <button
@@ -4205,22 +4253,25 @@ function openTagEditor(
         `
     );
 
-
     document
         .getElementById(
             "saveTags"
         )
         ?.addEventListener(
             "click",
-            () => {
+            async () => {
 
                 const input =
                     document.getElementById(
                         "tagEditorInput"
                     );
 
+                const button =
+                    document.getElementById(
+                        "saveTags"
+                    );
 
-                endpoint.tags =
+                const newTags =
                     input.value
                         .split(",")
                         .map(
@@ -4229,25 +4280,120 @@ function openTagEditor(
                         )
                         .filter(Boolean);
 
+                const oldTags =
+                    Array.isArray(
+                        endpoint.tags
+                    )
+                        ? [...endpoint.tags]
+                        : [];
 
-                closeModal();
+                const oldTagSet =
+                    new Set(oldTags);
 
-                renderTags();
+                const newTagSet =
+                    new Set(newTags);
 
-                updateStats();
+                const tagsToAdd =
+                    newTags.filter(
+                        tag =>
+                            !oldTagSet.has(tag)
+                    );
 
-                applyFilters();
+                const tagsToRemove =
+                    oldTags.filter(
+                        tag =>
+                            !newTagSet.has(tag)
+                    );
 
-                showToast(
-                    "Tags updated.",
-                    "success"
-                );
+                if (button) {
+                    button.disabled = true;
+                    button.textContent =
+                        "Saving...";
+                }
+
+                try {
+
+                    if (
+                        !window.EdmsAPI ||
+                        typeof window.EdmsAPI.addEndpointTag !==
+                            "function" ||
+                        typeof window.EdmsAPI.removeEndpointTag !==
+                            "function"
+                    ) {
+
+                        throw new Error(
+                            "Endpoint tag API is unavailable."
+                        );
+
+                    }
+
+                    for (
+                        const tag of tagsToAdd
+                    ) {
+
+                        await window.EdmsAPI
+                            .addEndpointTag(
+                                getBookmarkEndpointId(
+                                    endpoint
+                                ),
+                                tag
+                            );
+
+                    }
+
+                    for (
+                        const tag of tagsToRemove
+                    ) {
+
+                        await window.EdmsAPI
+                            .removeEndpointTag(
+                                getBookmarkEndpointId(
+                                    endpoint
+                                ),
+                                tag
+                            );
+
+                    }
+
+                    endpoint.tags =
+                        newTags;
+
+                    closeModal();
+
+                    renderTags();
+                    updateStats();
+                    applyFilters();
+
+                    showToast(
+                        "Tags updated.",
+                        "success"
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "Failed to update tags:",
+                        error
+                    );
+
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent =
+                            "Save";
+                    }
+
+                    showToast(
+                        error.message ||
+                            "Failed to update tags.",
+                        "error"
+                    );
+
+                }
 
             }
         );
 
 }
-
 
 // ============================================================
 // ANNOTATION EDITOR
@@ -4257,140 +4403,11 @@ function openAnnotationEditor(
     endpoint
 ) {
 
-    openModal(
-        `Edit Annotation — ${endpoint.id}`,
-        `
-
-            <div class="space-y-4">
-
-                <textarea
-                    id="annotationInput"
-                    rows="5"
-                    class="w-full resize-y rounded-md
-                           border border-slate-700
-                           bg-slate-950 p-3 text-xs
-                           leading-5 text-slate-300
-                           outline-none
-                           focus:border-cyan-500"
-                >${escapeHTML(
-                    endpoint.annotation || ""
-                )}</textarea>
-
-
-                <div class="flex justify-end gap-2">
-
-                    <button
-                        type="button"
-                        data-modal-close
-                        class="rounded-md border
-                               border-slate-700
-                               px-3 py-1.5 text-xs
-                               text-slate-400
-                               hover:bg-slate-800"
-                    >
-                        Cancel
-                    </button>
-
-                    <button
-                        id="saveAnnotation"
-                        type="button"
-                        class="rounded-md bg-cyan-600
-                               px-3 py-1.5 text-xs
-                               font-medium text-white
-                               hover:bg-cyan-500"
-                    >
-                        Save
-                    </button>
-
-                </div>
-
-            </div>
-
-        `
-    );
-
-
-    document
-        .getElementById(
-            "saveAnnotation"
-        )
-        ?.addEventListener(
-            "click",
-            () => {
-
-                endpoint.annotation =
-                    document
-                        .getElementById(
-                            "annotationInput"
-                        )
-                        .value
-                        .trim();
-
-
-                closeModal();
-
-                renderTable();
-
-                showToast(
-                    "Annotation updated.",
-                    "success"
-                );
-
-            }
-        );
-
-}
-
-
-// ============================================================
-// DUPLICATE ENDPOINT
-// ============================================================
-
-function duplicateEndpoint(
-    endpoint
-) {
-
-    const copy =
-        JSON.parse(
-            JSON.stringify(
-                endpoint
-            )
-        );
-
-
-    copy.id =
-        generateEndpointId();
-
-
-    copy.addedAt =
-        new Date().toISOString();
-
-
-    copy.updated =
-        new Date().toISOString();
-
-
-    endpoints.push(
-        copy
-    );
-
-
-    renderTags();
-
-    renderSegments();
-
-    updateStats();
-
-    applyFilters();
-
-
-    showToast(
-        `Endpoint duplicated as ${copy.id}.`,
-        "success"
+    openModifyDataModal(
+        endpoint
     );
 
 }
-
 
 // ============================================================
 // SINGLE DELETE
@@ -4416,11 +4433,10 @@ function openDeleteSingleModal(
                         class="text-xs text-rose-300"
                     >
                         This endpoint will be removed
-                        from the current session.
+                        from the current Bookmark View.
                     </p>
 
                 </div>
-
 
                 <div
                     class="rounded-lg border
@@ -4448,7 +4464,6 @@ function openDeleteSingleModal(
                     </p>
 
                 </div>
-
 
                 <div class="flex justify-end gap-2">
 
@@ -4482,76 +4497,262 @@ function openDeleteSingleModal(
         `
     );
 
-
     document
         .getElementById(
             "confirmSingleDelete"
         )
         ?.addEventListener(
             "click",
-            () => {
+            async () => {
 
-                const key =
-                    getEndpointKey(
-                        endpoint
+                const button =
+                    document.getElementById(
+                        "confirmSingleDelete"
                     );
 
-
-                endpoints =
-                    endpoints.filter(
-                        item =>
-                            getEndpointKey(
-                                item
-                            ) !== key
-                    );
-
-
-                selectedEndpointIds.delete(
-                    key
-                );
-
-
-                if (
-                    selectedEndpoint ===
-                    endpoint
-                ) {
-
-                    selectedEndpoint =
-                        null;
-
-                    selectedQP =
-                        null;
-
-                    resetDetails();
-
-                    renderQP(null);
-
+                if (button) {
+                    button.disabled = true;
+                    button.textContent =
+                        "Deleting...";
                 }
 
+                try {
 
-                closeModal();
+                    await deleteActiveBookmark(
+                        getBookmarkEndpointId(
+                            endpoint
+                        )
+                    );
 
-                renderTags();
+                    const key =
+                        getEndpointKey(
+                            endpoint
+                        );
 
-                renderSegments();
+                    endpoints =
+                        endpoints.filter(
+                            item =>
+                                getEndpointKey(
+                                    item
+                                ) !== key
+                        );
 
-                updateStats();
+                    selectedEndpointIds.delete(
+                        key
+                    );
 
-                applyFilters();
+                    if (
+                        selectedEndpoint ===
+                        endpoint
+                    ) {
 
-                updateSelectionUI();
+                        selectedEndpoint =
+                            null;
 
+                        selectedQP =
+                            null;
 
-                showToast(
-                    "Endpoint deleted.",
-                    "success"
-                );
+                        resetDetails();
+                        renderQP(null);
+
+                    }
+
+                    closeModal();
+
+                    renderTags();
+                    renderSegments();
+                    updateStats();
+                    applyFilters();
+                    updateSelectionUI();
+
+                    showToast(
+                        "Endpoint removed from Bookmark View.",
+                        "success"
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "Bookmark deletion failed:",
+                        error
+                    );
+
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent =
+                            "Delete";
+                    }
+
+                    showToast(
+                        error.message ||
+                            "Failed to delete endpoint.",
+                        "error"
+                    );
+
+                }
 
             }
         );
 
 }
 
+// ============================================================
+// DELETE ACTIVE BOOKMARK
+// ============================================================
+
+async function deleteActiveBookmark(
+    endpointId
+) {
+
+    if (
+        window.EdmsAPI &&
+        typeof window.EdmsAPI.deleteActiveBookmark ===
+            "function"
+    ) {
+
+        const result =
+            await window.EdmsAPI.deleteActiveBookmark(
+                endpointId
+            );
+
+        if (
+            result &&
+            result.ok === false
+        ) {
+
+            throw new Error(
+                result.data?.message ||
+                result.data?.error ||
+                "Failed to delete bookmark."
+            );
+
+        }
+
+        return result;
+
+    }
+
+    if (
+        !window.EdmsAPI ||
+        typeof window.EdmsAPI.createWebSocket !==
+            "function"
+    ) {
+
+        throw new Error(
+            "Bookmark delete API is unavailable."
+        );
+
+    }
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const ws =
+                window.EdmsAPI.createWebSocket(
+                    "/test-view/active/delete"
+                );
+
+            let settled = false;
+
+            const finish =
+                (
+                    callback,
+                    value
+                ) => {
+
+                    if (settled) return;
+
+                    settled = true;
+
+                    try {
+                        ws.close();
+                    } catch {}
+
+                    callback(value);
+
+                };
+
+            ws.addEventListener(
+                "open",
+                () => {
+
+                    ws.send(
+                        JSON.stringify(
+                            {
+                                endpoint_id:
+                                    endpointId
+                            }
+                        )
+                    );
+
+                }
+            );
+
+            ws.addEventListener(
+                "message",
+                event => {
+
+                    try {
+
+                        const message =
+                            JSON.parse(
+                                event.data
+                            );
+
+                        if (
+                            message.type ===
+                                "error" ||
+                            message.error
+                        ) {
+
+                            finish(
+                                reject,
+                                new Error(
+                                    message.message ||
+                                    message.error ||
+                                    "Failed to delete bookmark."
+                                )
+                            );
+
+                            return;
+
+                        }
+
+                        finish(
+                            resolve,
+                            message
+                        );
+
+                    } catch (error) {
+
+                        finish(
+                            reject,
+                            error
+                        );
+
+                    }
+
+                }
+            );
+
+            ws.addEventListener(
+                "error",
+                () => {
+
+                    finish(
+                        reject,
+                        new Error(
+                            "Bookmark delete WebSocket failed."
+                        )
+                    );
+
+                }
+            );
+
+        }
+    );
+
+}
 
 // ============================================================
 // QP EDITOR
@@ -4591,7 +4792,6 @@ function openQPEditor(
 
                 </div>
 
-
                 <div class="flex justify-end gap-2">
 
                     <button
@@ -4624,7 +4824,6 @@ function openQPEditor(
         `
     );
 
-
     document
         .getElementById(
             "saveQP"
@@ -4641,7 +4840,6 @@ function openQPEditor(
                         .value
                         .trim();
 
-
                 closeModal();
 
                 renderQP(
@@ -4657,75 +4855,6 @@ function openQPEditor(
         );
 
 }
-
-
-// ============================================================
-// DUPLICATE QP
-// ============================================================
-
-function duplicateQP(
-    endpoint,
-    qp
-) {
-
-    if (
-        !Array.isArray(
-            endpoint.qps
-        )
-    ) {
-
-        endpoint.qps = [];
-
-    }
-
-
-    const copy =
-        JSON.parse(
-            JSON.stringify(
-                qp
-            )
-        );
-
-
-    copy.id =
-        endpoint.qps.reduce(
-            (
-                max,
-                item
-            ) =>
-                Math.max(
-                    max,
-                    Number(
-                        item.id
-                    ) || 0
-                ),
-            0
-        ) + 1;
-
-
-    copy.name =
-        `${qp.name || "QP"} Copy`;
-
-
-    endpoint.qps.push(
-        copy
-    );
-
-
-    renderQP(
-        endpoint
-    );
-
-    renderTable();
-
-
-    showToast(
-        "QP duplicated.",
-        "success"
-    );
-
-}
-
 
 // ============================================================
 // DELETE QP ITEM
@@ -4744,23 +4873,19 @@ function deleteQPItem(
         return;
     }
 
-
     const index =
         endpoint.qps.indexOf(
             qp
         );
 
-
     if (index === -1) {
         return;
     }
-
 
     endpoint.qps.splice(
         index,
         1
     );
-
 
     if (
         selectedQP === qp
@@ -4773,13 +4898,11 @@ function deleteQPItem(
 
     }
 
-
     renderQP(
         endpoint
     );
 
     renderTable();
-
 
     showToast(
         "QP deleted.",
@@ -4787,7 +4910,6 @@ function deleteQPItem(
     );
 
 }
-
 
 // ============================================================
 // SEGMENT CHOOSER
@@ -4801,7 +4923,6 @@ function openSegmentChooser(
         getEndpointSegments(
             endpoint.endpoint
         );
-
 
     openModal(
         `Endpoint Segments — ${endpoint.id}`,
@@ -4866,7 +4987,6 @@ function openSegmentChooser(
         `
     );
 
-
     document
         .querySelectorAll(
             ".segment-modal-option"
@@ -4881,13 +5001,11 @@ function openSegmentChooser(
                         const segment =
                             button.dataset.segment;
 
-
                         activeFilters.segments
                             .clear();
 
                         activeFilters.segments
                             .add(segment);
-
 
                         syncFilterCheckboxes();
 
@@ -4905,7 +5023,6 @@ function openSegmentChooser(
 
 }
 
-
 // ============================================================
 // MODAL
 // ============================================================
@@ -4920,7 +5037,6 @@ function setupModal() {
             "click",
             closeModal
         );
-
 
     modalOverlay?.addEventListener(
         "click",
@@ -4937,7 +5053,6 @@ function setupModal() {
 
         }
     );
-
 
     document.addEventListener(
         "click",
@@ -4956,16 +5071,18 @@ function setupModal() {
         }
     );
 
-
     document.addEventListener(
         "keydown",
         event => {
 
             if (
-                event.key === "Escape"
+                event.key ===
+                "Escape"
             ) {
 
-                if (detailsFullscreenActive) {
+                if (
+                    detailsFullscreenActive
+                ) {
 
                     toggleDetailsFullscreen();
 
@@ -4973,11 +5090,8 @@ function setupModal() {
 
                 }
 
-
                 hideRequestResponse();
-
                 closeModal();
-
                 closeContextMenu();
 
             }
@@ -4987,7 +5101,6 @@ function setupModal() {
 
 }
 
-
 function openModal(
     title,
     content
@@ -4995,13 +5108,11 @@ function openModal(
 
     if (!modalOverlay) return;
 
-
     modalTitle.textContent =
         title;
 
     modalContent.innerHTML =
         content;
-
 
     modalOverlay.classList.remove(
         "hidden"
@@ -5012,7 +5123,6 @@ function openModal(
     );
 
 }
-
 
 function closeModal() {
 
@@ -5025,7 +5135,6 @@ function closeModal() {
     );
 
 }
-
 
 // ============================================================
 // TOAST
@@ -5041,18 +5150,15 @@ function showToast(
             "div"
         );
 
-
     const icon =
         type === "error"
             ? iconAlert()
             : iconCheck();
 
-
     const color =
         type === "error"
             ? "border-rose-500/20 text-rose-300"
             : "border-emerald-500/20 text-emerald-300";
-
 
     toast.className =
         `
@@ -5066,15 +5172,12 @@ function showToast(
             ${color}
         `;
 
-
     toast.innerHTML =
         `${icon}<span>${escapeHTML(message)}</span>`;
-
 
     document.body.appendChild(
         toast
     );
-
 
     setTimeout(
         () => {
@@ -5087,7 +5190,6 @@ function showToast(
 
 }
 
-
 // ============================================================
 // COLUMN RESIZING
 // ============================================================
@@ -5099,7 +5201,6 @@ function makeColumnsResizable() {
             "th"
         );
 
-
     headers.forEach(
         header => {
 
@@ -5108,32 +5209,25 @@ function makeColumnsResizable() {
                     ".resize-handle"
                 );
 
-
             if (!handle) {
                 return;
             }
 
-
             let startX = 0;
-
             let startWidth = 0;
-
 
             handle.addEventListener(
                 "mousedown",
                 event => {
 
                     event.preventDefault();
-
                     event.stopPropagation();
-
 
                     startX =
                         event.pageX;
 
                     startWidth =
                         header.offsetWidth;
-
 
                     const resize =
                         moveEvent => {
@@ -5148,12 +5242,10 @@ function makeColumnsResizable() {
                                     )
                                 );
 
-
                             header.style.width =
                                 `${newWidth}px`;
 
                         };
-
 
                     const stopResize =
                         () => {
@@ -5171,7 +5263,6 @@ function makeColumnsResizable() {
                                 );
 
                         };
-
 
                     document
                         .addEventListener(
@@ -5192,7 +5283,6 @@ function makeColumnsResizable() {
     );
 
 }
-
 
 // ============================================================
 // FILTER CHECKBOX SYNC
@@ -5215,7 +5305,6 @@ function syncFilterCheckboxes() {
             }
         );
 
-
     document
         .querySelectorAll(
             ".segment-checkbox"
@@ -5233,7 +5322,6 @@ function syncFilterCheckboxes() {
 
 }
 
-
 // ============================================================
 // HELPERS
 // ============================================================
@@ -5247,34 +5335,6 @@ function getEndpointKey(
     );
 
 }
-
-
-function generateEndpointId() {
-
-    let number = 1;
-
-
-    while (
-        endpoints.some(
-            endpoint =>
-                String(
-                    endpoint.id
-                ) ===
-                `E${String(number)
-                    .padStart(3, "0")}`
-        )
-    ) {
-
-        number++;
-
-    }
-
-
-    return `E${String(number)
-        .padStart(3, "0")}`;
-
-}
-
 
 function formatJSON(
     value
@@ -5293,15 +5353,14 @@ function formatJSON(
 
     }
 
-
     if (
-        typeof value === "string"
+        typeof value ===
+        "string"
     ) {
 
         return value;
 
     }
-
 
     try {
 
@@ -5321,7 +5380,6 @@ function formatJSON(
 
 }
 
-
 function calculatePayload(
     body
 ) {
@@ -5335,14 +5393,12 @@ function calculatePayload(
 
     }
 
-
     try {
 
         const text =
             JSON.stringify(
                 body
             );
-
 
         return `${text.length} B`;
 
@@ -5354,14 +5410,12 @@ function calculatePayload(
 
 }
 
-
 function getStatusColor(
     status
 ) {
 
     const value =
         Number(status);
-
 
     if (
         value >= 200 &&
@@ -5372,7 +5426,6 @@ function getStatusColor(
 
     }
 
-
     if (
         value >= 400 &&
         value < 500
@@ -5382,7 +5435,6 @@ function getStatusColor(
 
     }
 
-
     if (
         value >= 500
     ) {
@@ -5391,11 +5443,9 @@ function getStatusColor(
 
     }
 
-
     return "text-slate-400";
 
 }
-
 
 function formatDate(
     value
@@ -5405,10 +5455,8 @@ function formatDate(
         return "—";
     }
 
-
     const date =
         new Date(value);
-
 
     if (
         Number.isNaN(
@@ -5422,7 +5470,6 @@ function formatDate(
 
     }
 
-
     return date.toLocaleDateString(
         undefined,
         {
@@ -5433,7 +5480,6 @@ function formatDate(
     );
 
 }
-
 
 function escapeHTML(
     value
@@ -5465,7 +5511,6 @@ function escapeHTML(
 
 }
 
-
 function escapeAttribute(
     value
 ) {
@@ -5475,7 +5520,6 @@ function escapeAttribute(
     );
 
 }
-
 
 // ============================================================
 // SVG ICONS
@@ -5497,7 +5541,6 @@ function iconCheck() {
 
 }
 
-
 function iconTrash() {
 
     return `
@@ -5516,7 +5559,6 @@ function iconTrash() {
     `;
 
 }
-
 
 function iconTag() {
 
@@ -5543,7 +5585,6 @@ function iconTag() {
 
 }
 
-
 function iconEdit() {
 
     return `
@@ -5554,9 +5595,7 @@ function iconEdit() {
             stroke="currentColor"
             stroke-width="1.8"
         >
-            <path
-                d="M12 20h9"
-            />
+            <path d="M12 20h9"/>
             <path
                 d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"
             />
@@ -5564,34 +5603,6 @@ function iconEdit() {
     `;
 
 }
-
-
-function iconCopy() {
-
-    return `
-        <svg
-            class="h-3.5 w-3.5 shrink-0"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-        >
-            <rect
-                x="9"
-                y="9"
-                width="11"
-                height="11"
-                rx="2"
-            />
-            <path
-                d="M5 15H4a2 2 0 0 1-2-2V4
-                   a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-            />
-        </svg>
-    `;
-
-}
-
 
 function iconExternal() {
 
@@ -5603,12 +5614,8 @@ function iconExternal() {
             stroke="currentColor"
             stroke-width="1.8"
         >
-            <path
-                d="M14 3h7v7"
-            />
-            <path
-                d="M10 14 21 3"
-            />
+            <path d="M14 3h7v7"/>
+            <path d="M10 14 21 3"/>
             <path
                 d="M21 14v5a2 2 0 0 1-2 2H5
                    a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"
@@ -5617,7 +5624,6 @@ function iconExternal() {
     `;
 
 }
-
 
 function iconAlert() {
 
@@ -5632,12 +5638,8 @@ function iconAlert() {
             <path
                 d="m12 3 9 17H3L12 3Z"
             />
-            <path
-                d="M12 9v4"
-            />
-            <path
-                d="M12 16h.01"
-            />
+            <path d="M12 9v4"/>
+            <path d="M12 16h.01"/>
         </svg>
     `;
 
