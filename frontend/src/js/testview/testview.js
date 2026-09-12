@@ -1,6 +1,6 @@
-// =========================================
+// ============================================================
 // EDMS TEST VIEW
-// =========================================
+// ============================================================
 
 let endpoints = [];
 let bookmarks = [];
@@ -16,8 +16,8 @@ let activeSidebarTab = "endpoints";
 let activeTestMethod = "ALL";
 let activeTimeFilter = "all";
 
-let activeRequestTab = "headers";
-let activeResponseTab = "headers";
+let activeRequestTab = "body";
+let activeResponseTab = "body";
 
 let latestResponseMeta = null;
 
@@ -35,88 +35,88 @@ const LOCAL_QP_KEY = "edmsTestViewQPs";
 
 const API_BASE = "http://localhost:3000";
 
-// =========================================
+// ============================================================
 // DOM
-// =========================================
+// ============================================================
 
 const testEndpointList =
-document.getElementById("testEndpointList");
+    document.getElementById("testEndpointList");
 
 const testQPPanel =
-document.getElementById("qpPanel");
+    document.getElementById("qpPanel");
 
 const qpMenuButton =
-document.getElementById("qpMenuButton");
+    document.getElementById("qpMenuButton");
 
 const qpMenu =
-document.getElementById("qpMenu");
+    document.getElementById("qpMenu");
 
 const testSearchInput =
-document.getElementById("testSearchInput");
+    document.getElementById("testSearchInput");
 
 const urlFilter =
-document.getElementById("urlFilter");
+    document.getElementById("urlFilter");
 
 const timeFilter =
-document.getElementById("timeFilter");
+    document.getElementById("timeFilter");
 
 const testMethod =
-document.getElementById("Method");
+    document.getElementById("Method");
 
 const baseUrl =
-document.getElementById("URL-prefix");
+    document.getElementById("URL-prefix");
 
 const endpointPath =
-document.getElementById("Endpoint-path");
+    document.getElementById("Endpoint-path");
 
 const runButton =
-document.getElementById("runRequest");
+    document.getElementById("runRequest");
 
 const stopButton =
-document.getElementById("stopRequest");
+    document.getElementById("stopRequest");
 
 const annotationInput =
-document.getElementById("annotations");
+    document.getElementById("annotations");
 
 const tagInput =
-document.getElementById("tagInput");
+    document.getElementById("tagInput");
 
 const addTagButton =
-document.getElementById("addTagButton");
+    document.getElementById("addTagButton");
 
 const endpointTags =
-document.getElementById("endpointTags");
+    document.getElementById("endpointTags");
 
 const requestBox =
-document.getElementById("requestBox");
+    document.getElementById("requestBox");
 
 const responseBox =
-document.getElementById("responseBox");
+    document.getElementById("responseBox");
 
 const requestContent =
-document.getElementById("requestContent");
+    document.getElementById("requestContent");
 
 const responseContent =
-document.getElementById("responseContent");
+    document.getElementById("responseContent");
 
 const testSidebar =
-document.getElementById("testSidebar");
+    document.getElementById("testSidebar");
 
 const sidebarCollapseToggle =
-document.getElementById("sidebarCollapseToggle");
+    document.getElementById("sidebarCollapseToggle");
 
 const addressModeToggle =
-document.getElementById("addressModeToggle");
+    document.getElementById("addressModeToggle");
 
 const addressSplit =
-document.getElementById("addressSplit");
+    document.getElementById("addressSplit");
 
 const urlFullInput =
-document.getElementById("URL-full");
+    document.getElementById("URL-full");
 
-// =========================================
+// ============================================================
 // INIT
-// =========================================
+// ============================================================
 
 document.addEventListener(
     "DOMContentLoaded",
@@ -153,20 +153,16 @@ async function initTestView() {
     setupHistoryContextMenu();
 
     updateMethodButtons();
+    updateSidebarTabButtons();
     applyTestFilters();
 
 }
 
-// =========================================
+// ============================================================
 // LOAD DATA
-// =========================================
+// ============================================================
 
 async function loadTestData() {
-
-    // Backend is the source of truth for:
-    // - Endpoints
-    // - Active bookmarks
-    // - History
 
     await loadEndpointsFromBackend();
 
@@ -174,15 +170,289 @@ async function loadTestData() {
 
     await loadHistoryFromBackend();
 
-    // QPs are still local because the backend
-    // currently has no QP API.
     restoreLocalQPs();
+
+    /*
+     * Endpoint tags are stored separately from the
+     * endpoint snapshot, so load them from the tags API.
+     */
+    await loadEndpointTagsFromBackend();
 
 }
 
-// =========================================
+// ============================================================
+// TAG API
+// ============================================================
+
+async function fetchEndpointTags(endpointId) {
+
+    if (
+        endpointId === undefined ||
+        endpointId === null
+    ) {
+
+        return [];
+
+    }
+
+    const response =
+        await fetch(
+            `${API_BASE}/tags/${encodeURIComponent(endpointId)}`
+        );
+
+    if (!response.ok) {
+
+        throw new Error(
+            `Failed to load endpoint tags: ${response.status}`
+        );
+
+    }
+
+    const data =
+        await response.json();
+
+    return Array.isArray(data?.tags)
+        ? data.tags
+        : [];
+
+}
+
+async function addEndpointTag(endpointId, tag) {
+
+    if (
+        endpointId === undefined ||
+        endpointId === null
+    ) {
+
+        throw new Error(
+            "Endpoint ID is required to add a tag."
+        );
+
+    }
+
+    const response =
+        await fetch(
+            `${API_BASE}/tags/${encodeURIComponent(endpointId)}/add`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        tag
+                    })
+            }
+        );
+
+    const data =
+        await parseTagResponse(
+            response
+        );
+
+    if (!response.ok) {
+
+        throw new Error(
+            data?.message ||
+            data?.error ||
+            `Failed to add tag: ${response.status}`
+        );
+
+    }
+
+    return data;
+
+}
+
+async function removeEndpointTag(endpointId, tag) {
+
+    if (
+        endpointId === undefined ||
+        endpointId === null
+    ) {
+
+        throw new Error(
+            "Endpoint ID is required to remove a tag."
+        );
+
+    }
+
+    const response =
+        await fetch(
+            `${API_BASE}/tags/${encodeURIComponent(endpointId)}/remove`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        tag
+                    })
+            }
+        );
+
+    const data =
+        await parseTagResponse(
+            response
+        );
+
+    if (!response.ok) {
+
+        throw new Error(
+            data?.message ||
+            data?.error ||
+            `Failed to remove tag: ${response.status}`
+        );
+
+    }
+
+    return data;
+
+}
+
+async function loadPopularEndpointTags() {
+
+    const response =
+        await fetch(
+            `${API_BASE}/tags/popular`
+        );
+
+    if (!response.ok) {
+
+        throw new Error(
+            `Failed to load popular tags: ${response.status}`
+        );
+
+    }
+
+    const data =
+        await response.json();
+
+    return Array.isArray(data)
+        ? data
+        : [];
+
+}
+
+async function parseTagResponse(response) {
+
+    const text =
+        await response.text();
+
+    if (!text) {
+        return {};
+    }
+
+    try {
+
+        return JSON.parse(text);
+
+    } catch {
+
+        return {
+            message: text
+        };
+
+    }
+
+}
+
+// ============================================================
+// LOAD ENDPOINT TAGS
+// ============================================================
+
+async function loadEndpointTagsFromBackend() {
+
+    if (
+        !Array.isArray(endpoints) ||
+        endpoints.length === 0
+    ) {
+
+        return;
+
+    }
+
+    /*
+     * Load each endpoint's tags from the dedicated
+     * endpoint-tags API.
+     *
+     * A failure for one endpoint should not prevent
+     * the rest of Test View from loading.
+     */
+
+    await Promise.all(
+        endpoints.map(
+            async endpoint => {
+
+                if (
+                    endpoint?.id === undefined ||
+                    endpoint?.id === null
+                ) {
+
+                    return;
+
+                }
+
+                try {
+
+                    endpoint.tags =
+                        await fetchEndpointTags(
+                            endpoint.id
+                        );
+
+                } catch (error) {
+
+                    console.warn(
+                        `Could not load tags for endpoint ${endpoint.id}:`,
+                        error
+                    );
+
+                    if (
+                        !Array.isArray(
+                            endpoint.tags
+                        )
+                    ) {
+
+                        endpoint.tags = [];
+
+                    }
+
+                }
+
+            }
+        )
+    );
+
+    if (selectedTestEndpoint) {
+
+        const refreshedEndpoint =
+            findEndpoint(
+                selectedTestEndpoint.id
+            );
+
+        if (refreshedEndpoint) {
+
+            selectedTestEndpoint =
+                refreshedEndpoint;
+
+            renderSelectedEndpointTags();
+
+        }
+
+    }
+
+}
+
+// ============================================================
 // BACKEND ENDPOINT SNAPSHOT
-// =========================================
+// ============================================================
 
 function loadEndpointsFromBackend() {
 
@@ -259,6 +529,7 @@ function loadEndpointsFromBackend() {
                         );
 
                     }
+
                 }
             );
 
@@ -298,9 +569,9 @@ function loadEndpointsFromBackend() {
 
 }
 
-// =========================================
+// ============================================================
 // NORMALIZE ENDPOINT
-// =========================================
+// ============================================================
 
 function normalizeBackendEndpoint(endpoint) {
 
@@ -309,8 +580,8 @@ function normalizeBackendEndpoint(endpoint) {
         endpoint.endpoint_id;
 
     const fullURL =
-        endpoint.endpoint ??
         endpoint.endpoint_str ??
+        endpoint.endpoint ??
         endpoint.url ??
         "";
 
@@ -370,9 +641,9 @@ function normalizeBackendEndpoint(endpoint) {
 
 }
 
-// =========================================
+// ============================================================
 // BACKEND BOOKMARK SNAPSHOT
-// =========================================
+// ============================================================
 
 function loadBookmarksFromBackend() {
 
@@ -447,6 +718,7 @@ function loadBookmarksFromBackend() {
                         );
 
                     }
+
                 }
             );
 
@@ -480,9 +752,9 @@ function loadBookmarksFromBackend() {
 
 }
 
-// =========================================
+// ============================================================
 // BACKEND HISTORY SNAPSHOT
-// =========================================
+// ============================================================
 
 function loadHistoryFromBackend() {
 
@@ -573,6 +845,7 @@ function loadHistoryFromBackend() {
                         );
 
                     }
+
                 }
             );
 
@@ -612,9 +885,9 @@ function loadHistoryFromBackend() {
 
 }
 
-// =========================================
+// ============================================================
 // NORMALIZE HISTORY
-// =========================================
+// ============================================================
 
 function normalizeBackendHistory(history) {
 
@@ -702,9 +975,9 @@ function normalizeBackendHistory(history) {
 
 }
 
-// =========================================
+// ============================================================
 // LOCAL QP STORAGE
-// =========================================
+// ============================================================
 
 function loadLocalQPs() {
 
@@ -813,9 +1086,9 @@ function restoreLocalQPs() {
 
 }
 
-// =========================================
+// ============================================================
 // SIDEBAR ITEMS
-// =========================================
+// ============================================================
 
 function getActiveSidebarItems() {
 
@@ -985,9 +1258,9 @@ function getActiveSidebarItems() {
 
 }
 
-// =========================================
+// ============================================================
 // RENDER SIDEBAR
-// =========================================
+// ============================================================
 
 function renderTestEndpoints() {
 
@@ -1006,6 +1279,7 @@ function renderTestEndpoints() {
         `;
 
         return;
+
     }
 
     filteredTestEndpoints.forEach(
@@ -1018,11 +1292,13 @@ function renderTestEndpoints() {
         }
     );
 
+    updateSelectedEndpointHighlight();
+
 }
 
-// =========================================
+// ============================================================
 // ENDPOINT CARD
-// =========================================
+// ============================================================
 
 function createTestEndpointCard(item) {
 
@@ -1051,11 +1327,11 @@ function createTestEndpointCard(item) {
     `;
 
     card.dataset.id =
-        item.id ||
+        item.id ??
         endpoint.id;
 
     card.dataset.endpointId =
-        item.endpointId ||
+        item.endpointId ??
         endpoint.id;
 
     card.innerHTML = `
@@ -1153,9 +1429,9 @@ function createTestEndpointCard(item) {
 
 }
 
-// =========================================
+// ============================================================
 // HISTORY CONTEXT MENU
-// =========================================
+// ============================================================
 
 function setupHistoryContextMenu() {
 
@@ -1399,9 +1675,9 @@ function hideHistoryContextMenu() {
 
 }
 
-// =========================================
+// ============================================================
 // HISTORY → ACTIVE COLLECTION
-// =========================================
+// ============================================================
 
 async function addHistoryToBookmark(
     historyItem
@@ -1420,6 +1696,7 @@ async function addHistoryToBookmark(
         );
 
         return;
+
     }
 
     await saveEndpointToActiveCollection(
@@ -1428,9 +1705,9 @@ async function addHistoryToBookmark(
 
 }
 
-// =========================================
+// ============================================================
 // SAVE SELECTED ENDPOINT → ACTIVE COLLECTION
-// =========================================
+// ============================================================
 
 async function saveSelectedEndpoint() {
 
@@ -1450,9 +1727,9 @@ async function saveSelectedEndpoint() {
 
 }
 
-// =========================================
+// ============================================================
 // SAVE ENDPOINT → ACTIVE COLLECTION
-// =========================================
+// ============================================================
 
 async function saveEndpointToActiveCollection(
     endpointId
@@ -1484,14 +1761,10 @@ async function saveEndpointToActiveCollection(
 
     try {
 
-        // First add the endpoint to the active
-        // Bookmark View workspace.
         await window.EdmsAPI.addActiveBookmark(
             endpointId
         );
 
-        // Then persist the active bookmark into
-        // the currently loaded collection.
         const result =
             await window.EdmsAPI.saveActiveBookmark(
                 endpointId
@@ -1545,9 +1818,9 @@ async function saveEndpointToActiveCollection(
 
 }
 
-// =========================================
+// ============================================================
 // CLEAR ALL HISTORY
-// =========================================
+// ============================================================
 
 async function clearAllHistory() {
 
@@ -1596,9 +1869,9 @@ async function clearAllHistory() {
 
 }
 
-// =========================================
+// ============================================================
 // METHOD COLOR
-// =========================================
+// ============================================================
 
 function getMethodColor(method) {
 
@@ -1626,9 +1899,9 @@ function getMethodColor(method) {
 
 }
 
-// =========================================
+// ============================================================
 // BADGE
-// =========================================
+// ============================================================
 
 function getItemBadge(item) {
 
@@ -1663,9 +1936,9 @@ function getItemBadge(item) {
 
 }
 
-// =========================================
+// ============================================================
 // QP COUNT
-// =========================================
+// ============================================================
 
 function getQPCountLabel(endpoint) {
 
@@ -1678,9 +1951,9 @@ function getQPCountLabel(endpoint) {
 
 }
 
-// =========================================
+// ============================================================
 // SELECT SIDEBAR ITEM
-// =========================================
+// ============================================================
 
 function selectSidebarItem(
     item,
@@ -1702,9 +1975,9 @@ function selectSidebarItem(
 
 }
 
-// =========================================
+// ============================================================
 // SELECT ENDPOINT
-// =========================================
+// ============================================================
 
 function selectTestEndpoint(
     endpoint,
@@ -1778,18 +2051,120 @@ function selectTestEndpoint(
 
     }
 
-    renderSelectedEndpointTags();
+    /*
+     * Refresh tags from backend whenever an endpoint
+     * is selected, so the UI reflects the current
+     * backend state.
+     */
+    refreshSelectedEndpointTags();
 
     renderTestQP(
         endpoint,
         preferredQPId
     );
 
+    updateSelectedEndpointHighlight();
+
 }
 
-// =========================================
+// ============================================================
+// REFRESH SELECTED ENDPOINT TAGS
+// ============================================================
+
+async function refreshSelectedEndpointTags() {
+
+    if (
+        !selectedTestEndpoint ||
+        selectedTestEndpoint.id === undefined ||
+        selectedTestEndpoint.id === null
+    ) {
+
+        renderSelectedEndpointTags();
+
+        return;
+
+    }
+
+    try {
+
+        selectedTestEndpoint.tags =
+            await fetchEndpointTags(
+                selectedTestEndpoint.id
+            );
+
+        const endpoint =
+            findEndpoint(
+                selectedTestEndpoint.id
+            );
+
+        if (endpoint) {
+
+            endpoint.tags =
+                selectedTestEndpoint.tags;
+
+        }
+
+    } catch (error) {
+
+        console.warn(
+            "Could not refresh endpoint tags:",
+            error
+        );
+
+    }
+
+    renderSelectedEndpointTags();
+
+}
+
+// ============================================================
+// SELECTED ENDPOINT HIGHLIGHT
+// ============================================================
+
+function updateSelectedEndpointHighlight() {
+
+    const selectedId =
+        selectedTestEndpoint?.id;
+
+    document
+        .querySelectorAll(
+            ".endpoint-card"
+        )
+        .forEach(
+            card => {
+
+                const cardEndpointId =
+                    card.dataset.endpointId;
+
+                const active =
+                    selectedId !== undefined &&
+                    selectedId !== null &&
+                    String(cardEndpointId) ===
+                        String(selectedId);
+
+                card.classList.toggle(
+                    "bg-sky-500/10",
+                    active
+                );
+
+                card.classList.toggle(
+                    "border-l-2",
+                    active
+                );
+
+                card.classList.toggle(
+                    "border-sky-500",
+                    active
+                );
+
+            }
+        );
+
+}
+
+// ============================================================
 // RENDER QP
-// =========================================
+// ============================================================
 
 function renderTestQP(
     endpoint,
@@ -2007,9 +2382,9 @@ function renderTestQP(
 
 }
 
-// =========================================
+// ============================================================
 // QP MENU
-// =========================================
+// ============================================================
 
 function setupQPMenu() {
 
@@ -2080,9 +2455,9 @@ function setupQPMenu() {
 
 }
 
-// =========================================
+// ============================================================
 // QP MENU ACTION
-// =========================================
+// ============================================================
 
 function handleQPMenuAction(action) {
 
@@ -2108,9 +2483,9 @@ function handleQPMenuAction(action) {
 
 }
 
-// =========================================
+// ============================================================
 // CREATE QP
-// =========================================
+// ============================================================
 
 function doCreateQP() {
 
@@ -2185,9 +2560,9 @@ function doCreateQP() {
 
 }
 
-// =========================================
+// ============================================================
 // SELECT ALL QP
-// =========================================
+// ============================================================
 
 function doSelectAllQP() {
 
@@ -2236,9 +2611,9 @@ function doSelectAllQP() {
 
 }
 
-// =========================================
+// ============================================================
 // CLEAR QP SELECTION
-// =========================================
+// ============================================================
 
 function doClearSelectionQP() {
 
@@ -2275,9 +2650,9 @@ function doClearSelectionQP() {
 
 }
 
-// =========================================
+// ============================================================
 // DELETE SELECTED QP
-// =========================================
+// ============================================================
 
 function doDeleteSelectedQP() {
 
@@ -2317,9 +2692,9 @@ function doDeleteSelectedQP() {
 
 }
 
-// =========================================
+// ============================================================
 // SELECT QP
-// =========================================
+// ============================================================
 
 function selectTestQP(
     qp,
@@ -2371,9 +2746,9 @@ function selectTestQP(
 
 }
 
-// =========================================
+// ============================================================
 // REQUEST
-// =========================================
+// ============================================================
 
 function renderCurrentRequest() {
 
@@ -2385,6 +2760,7 @@ function renderCurrentRequest() {
             "";
 
         return;
+
     }
 
     const request =
@@ -2406,9 +2782,9 @@ function renderCurrentRequest() {
 
 }
 
-// =========================================
+// ============================================================
 // RESPONSE
-// =========================================
+// ============================================================
 
 function renderCurrentResponse() {
 
@@ -2420,6 +2796,7 @@ function renderCurrentResponse() {
             "";
 
         return;
+
     }
 
     const response =
@@ -2441,9 +2818,9 @@ function renderCurrentResponse() {
 
 }
 
-// =========================================
+// ============================================================
 // REQUEST BODY
-// =========================================
+// ============================================================
 
 function getRequestBodyPreview(request) {
 
@@ -2452,15 +2829,16 @@ function getRequestBodyPreview(request) {
     ) {
 
         return request.body;
+
     }
 
     return {};
 
 }
 
-// =========================================
+// ============================================================
 // RESPONSE HEADERS
-// =========================================
+// ============================================================
 
 function getResponseHeadersPreview(
     response
@@ -2493,9 +2871,9 @@ function getResponseHeadersPreview(
 
 }
 
-// =========================================
+// ============================================================
 // CLEAR
-// =========================================
+// ============================================================
 
 function clearRequestResponse() {
 
@@ -2515,9 +2893,9 @@ function clearRequestResponse() {
 
 }
 
-// =========================================
+// ============================================================
 // FORMAT JSON
-// =========================================
+// ============================================================
 
 function formatJSON(value) {
 
@@ -2539,9 +2917,9 @@ function formatJSON(value) {
 
 }
 
-// =========================================
+// ============================================================
 // SEARCH
-// =========================================
+// ============================================================
 
 function setupTestSearch() {
 
@@ -2554,9 +2932,9 @@ function setupTestSearch() {
 
 }
 
-// =========================================
+// ============================================================
 // METHOD FILTER
-// =========================================
+// ============================================================
 
 function setupMethodFilters() {
 
@@ -2598,9 +2976,9 @@ function setupMethodFilters() {
 
 }
 
-// =========================================
+// ============================================================
 // METHOD BUTTONS
-// =========================================
+// ============================================================
 
 function updateMethodButtons() {
 
@@ -2641,9 +3019,9 @@ function updateMethodButtons() {
 
 }
 
-// =========================================
+// ============================================================
 // TIME FILTER
-// =========================================
+// ============================================================
 
 function setupTimeFilter() {
 
@@ -2663,9 +3041,9 @@ function setupTimeFilter() {
 
 }
 
-// =========================================
+// ============================================================
 // URL FILTER
-// =========================================
+// ============================================================
 
 function setupURLFilter() {
 
@@ -2678,9 +3056,9 @@ function setupURLFilter() {
 
 }
 
-// =========================================
+// ============================================================
 // FILTER
-// =========================================
+// ============================================================
 
 function applyTestFilters() {
 
@@ -2761,9 +3139,9 @@ function applyTestFilters() {
 
 }
 
-// =========================================
+// ============================================================
 // TIME MATCH
-// =========================================
+// ============================================================
 
 function matchesTimeFilter(
     dateString
@@ -2843,9 +3221,9 @@ function matchesTimeFilter(
 
 }
 
-// =========================================
+// ============================================================
 // RUNNER
-// =========================================
+// ============================================================
 
 function setupRunner() {
 
@@ -2910,30 +3288,114 @@ function setupRunner() {
 
 }
 
-// =========================================
-// RUN TEST
-// =========================================
+// ============================================================
+// GET CURRENT INPUT ENDPOINT
+// ============================================================
 
-// =========================================
+function getCurrentEndpointInput() {
+
+    let endpointStr = "";
+
+    if (
+        addressCombinedMode &&
+        urlFullInput
+    ) {
+
+        endpointStr =
+            urlFullInput.value.trim();
+
+    } else {
+
+        endpointStr =
+            (
+                baseUrl?.value.trim() ||
+                ""
+            ) +
+            (
+                endpointPath?.value.trim() ||
+                ""
+            );
+
+    }
+
+    return endpointStr;
+
+}
+
+// ============================================================
+// DETERMINE WHETHER CURRENT INPUT IS THE
+// SELECTED STORED ENDPOINT
+// ============================================================
+
+function isCurrentInputExistingEndpoint(
+    endpoint,
+    endpointStr,
+    method
+) {
+
+    if (
+        !endpoint ||
+        endpoint.id === undefined ||
+        endpoint.id === null
+    ) {
+
+        return false;
+    }
+
+    const storedURL =
+        String(
+            endpoint.endpoint_str ||
+            (
+                endpoint.baseUrl ||
+                ""
+            ) +
+            (
+                endpoint.endpoint ||
+                ""
+            )
+        ).trim();
+
+    const currentURL =
+        String(
+            endpointStr ||
+            ""
+        ).trim();
+
+    const storedMethod =
+        String(
+            endpoint.method ||
+            "GET"
+        ).toUpperCase();
+
+    const currentMethod =
+        String(
+            method ||
+            "GET"
+        ).toUpperCase();
+
+    return (
+        storedURL === currentURL &&
+        storedMethod === currentMethod
+    );
+
+}
+
+// ============================================================
 // RUN TEST
-// =========================================
+// ============================================================
 
 async function runTestEndpoint() {
 
     /*
-     * New endpoint flow:
+     * The selected endpoint is NOT automatically
+     * considered the endpoint being tested.
      *
-     * 1. If an endpoint is selected, retest that endpoint.
-     * 2. If nothing is selected, use the URL/method fields directly.
-     * 3. Send endpoint_id as undefined.
-     * 4. Backend automatically creates the endpoint.
-     * 5. Resolve the newly created endpoint_id.
-     * 6. Fetch request/response using that ID.
+     * Same URL + same method:
+     *     retest existing endpoint.
+     *
+     * Different URL/method:
+     *     create/test a new endpoint.
      */
-
-    // -------------------------------------
-    // METHOD
-    // -------------------------------------
 
     const method =
         String(
@@ -2942,53 +3404,8 @@ async function runTestEndpoint() {
             "GET"
         ).toUpperCase();
 
-    // -------------------------------------
-    // ENDPOINT URL
-    // -------------------------------------
-
-    let endpointStr = "";
-
-    if (selectedTestEndpoint) {
-
-        endpointStr =
-            selectedTestEndpoint.endpoint_str ||
-            (
-                selectedTestEndpoint.baseUrl ||
-                ""
-            ) +
-            (
-                selectedTestEndpoint.endpoint ||
-                ""
-            );
-
-    } else {
-
-        /*
-         * No endpoint selected.
-         * Build the endpoint directly from
-         * the URL fields entered by the user.
-         */
-
-        if (addressCombinedMode && urlFullInput) {
-
-            endpointStr =
-                urlFullInput.value.trim();
-
-        } else {
-
-            endpointStr =
-                (
-                    baseUrl?.value.trim() ||
-                    ""
-                ) +
-                (
-                    endpointPath?.value.trim() ||
-                    ""
-                );
-
-        }
-
-    }
+    const endpointStr =
+        getCurrentEndpointInput();
 
     if (!endpointStr) {
 
@@ -2999,55 +3416,28 @@ async function runTestEndpoint() {
         return;
     }
 
-    // -------------------------------------
-    // CREATE TEMPORARY ENDPOINT STATE
-    // -------------------------------------
+    const existingEndpoint =
+        isCurrentInputExistingEndpoint(
+            selectedTestEndpoint,
+            endpointStr,
+            method
+        )
+            ? selectedTestEndpoint
+            : null;
 
-    /*
-     * When no endpoint exists yet, create a
-     * temporary frontend representation.
-     *
-     * IMPORTANT:
-     * id stays undefined.
-     *
-     * The backend will create the real endpoint.
-     */
+    const endpointId =
+        existingEndpoint?.id;
 
-    if (!selectedTestEndpoint) {
-
-        selectedTestEndpoint = {
-
-            id:
-                undefined,
-
+    console.log(
+        "Test target resolved:",
+        {
+            endpointId,
+            endpointStr,
             method,
-
-            endpoint_str:
-                endpointStr,
-
-            baseUrl:
-                baseUrl?.value.trim() ||
-                "",
-
-            endpoint:
-                endpointPath?.value.trim() ||
-                endpointStr,
-
-            annotation:
-                annotationInput?.value ||
-                "",
-
-            qps: [],
-
-            tags: []
-
-        };
-
-    }
-
-    // -------------------------------------
-    // CREATE DEFAULT QP IF NEEDED
-    // -------------------------------------
+            existing:
+                Boolean(existingEndpoint)
+        }
+    );
 
     if (!selectedTestQP) {
 
@@ -3099,7 +3489,7 @@ async function runTestEndpoint() {
         );
 
         // -------------------------------------
-        // START LISTENER BEFORE SENDING
+        // LISTEN FOR BACKEND EVENTS
         // -------------------------------------
 
         const finishedPromise =
@@ -3127,7 +3517,7 @@ async function runTestEndpoint() {
                 );
 
         // -------------------------------------
-        // REQUEST
+        // REQUEST / BODY
         // -------------------------------------
 
         const request =
@@ -3171,22 +3561,8 @@ async function runTestEndpoint() {
         }
 
         // -------------------------------------
-        // ENDPOINT ID
+        // SEND TO BACKEND
         // -------------------------------------
-
-        /*
-         * Existing endpoint:
-         *     send its ID
-         *
-         * New endpoint:
-         *     send undefined
-         *
-         * The backend will automatically create
-         * the endpoint in the second case.
-         */
-
-        const endpointId =
-            selectedTestEndpoint.id;
 
         console.log(
             "Starting backend test:",
@@ -3203,10 +3579,6 @@ async function runTestEndpoint() {
 
             }
         );
-
-        // -------------------------------------
-        // SEND TO BACKEND
-        // -------------------------------------
 
         window.EdmsAPI.startTest(
             ws,
@@ -3225,7 +3597,7 @@ async function runTestEndpoint() {
 
             request.headers,
 
-            selectedTestEndpoint.annotation
+            existingEndpoint?.annotation
         );
 
         // -------------------------------------
@@ -3251,12 +3623,6 @@ async function runTestEndpoint() {
             event.endpointId ??
             activeTestEndpointIdFromState();
 
-        /*
-         * If the backend did not include endpoint_id
-         * in the finished event, reload the endpoint
-         * snapshot and find the endpoint by URL.
-         */
-
         if (
             resolvedEndpointId ===
                 undefined ||
@@ -3272,14 +3638,30 @@ async function runTestEndpoint() {
 
             const createdEndpoint =
                 endpoints.find(
-                    endpoint =>
-                        String(
-                            endpoint.endpoint_str ||
-                            ""
-                        ) ===
-                        String(
-                            endpointStr
-                        )
+                    endpoint => {
+
+                        const sameURL =
+                            String(
+                                endpoint.endpoint_str ||
+                                ""
+                            ) ===
+                            String(
+                                endpointStr
+                            );
+
+                        const sameMethod =
+                            String(
+                                endpoint.method ||
+                                "GET"
+                            ).toUpperCase() ===
+                            method;
+
+                        return (
+                            sameURL &&
+                            sameMethod
+                        );
+
+                    }
                 );
 
             if (createdEndpoint) {
@@ -3310,18 +3692,13 @@ async function runTestEndpoint() {
         );
 
         // -------------------------------------
-        // USE REAL BACKEND ENDPOINT
+        // GET REAL BACKEND ENDPOINT
         // -------------------------------------
 
         let backendEndpoint =
             findEndpoint(
                 resolvedEndpointId
             );
-
-        /*
-         * If the endpoint wasn't already present in
-         * the current snapshot, reload once more.
-         */
 
         if (!backendEndpoint) {
 
@@ -3336,13 +3713,18 @@ async function runTestEndpoint() {
 
         if (backendEndpoint) {
 
-            /*
-             * Preserve the local QP because QPs are
-             * currently frontend-local.
-             */
-
             const localQP =
                 selectedTestQP;
+
+            const previousQPIds =
+                Array.isArray(
+                    backendEndpoint.qps
+                )
+                    ? backendEndpoint.qps.map(
+                        qp =>
+                            String(qp.id)
+                    )
+                    : [];
 
             selectedTestEndpoint =
                 backendEndpoint;
@@ -3358,33 +3740,88 @@ async function runTestEndpoint() {
 
             }
 
-            /*
-             * Reuse the temporary/default QP.
-             */
-
             if (
                 selectedTestEndpoint.qps.length ===
-                0
+                    0
             ) {
 
                 selectedTestEndpoint.qps.push(
                     localQP
                 );
 
+            } else if (
+                !previousQPIds.includes(
+                    String(localQP.id)
+                ) &&
+                String(localQP.id) ===
+                    "default"
+            ) {
+
+                selectedTestEndpoint.qps.unshift(
+                    localQP
+                );
+
             }
 
             selectedTestQP =
-                localQP;
+                selectedTestEndpoint.qps.find(
+                    qp =>
+                        String(qp.id) ===
+                        String(localQP.id)
+                ) ||
+                selectedTestEndpoint.qps[0];
+
+            renderSelectedEndpointTags();
+
+            renderTestQP(
+                selectedTestEndpoint,
+                selectedTestQP?.id
+            );
+
+            updateSelectedEndpointHighlight();
 
         } else {
 
-            /*
-             * Backend endpoint snapshot could not be
-             * resolved, but we do have its ID.
-             */
+            if (!selectedTestEndpoint) {
 
-            selectedTestEndpoint.id =
-                resolvedEndpointId;
+                selectedTestEndpoint = {
+
+                    id:
+                        resolvedEndpointId,
+
+                    method,
+
+                    endpoint_str:
+                        endpointStr,
+
+                    baseUrl:
+                        baseUrl?.value.trim() ||
+                        "",
+
+                    endpoint:
+                        endpointPath?.value.trim() ||
+                        endpointStr,
+
+                    annotation:
+                        annotationInput?.value ||
+                        "",
+
+                    qps: [],
+
+                    tags: []
+
+                };
+
+                endpoints.push(
+                    selectedTestEndpoint
+                );
+
+            } else {
+
+                selectedTestEndpoint.id =
+                    resolvedEndpointId;
+
+            }
 
         }
 
@@ -3416,8 +3853,14 @@ async function runTestEndpoint() {
             requestNumber;
 
         // -------------------------------------
-        // LOAD SAVED REQUEST / RESPONSE
+        // DIRECT REQUEST / RESPONSE RETRIEVAL
         // -------------------------------------
+        //
+        // There is NO RWR popup in Test View.
+        //
+        // TestFinished means the operation is
+        // complete, so immediately retrieve the
+        // actual saved request and response.
 
         const [
             requestResult,
@@ -3437,55 +3880,172 @@ async function runTestEndpoint() {
 
             ]);
 
-        console.log(
-            "Saved request:",
-            requestResult
-        );
+        if (
+            !requestResult?.ok
+        ) {
 
-        console.log(
-            "Saved response:",
-            responseResult
-        );
+            throw new Error(
+                requestResult?.data?.message ||
+                `Request retrieval failed: ${requestResult?.status}`
+            );
+
+        }
+
+        if (
+            !responseResult?.ok
+        ) {
+
+            throw new Error(
+                responseResult?.data?.message ||
+                `Response retrieval failed: ${responseResult?.status}`
+            );
+
+        }
 
         // -------------------------------------
-        // REQUEST
+        // FIND / CREATE QP
         // -------------------------------------
 
-        if (selectedTestQP) {
+        let endpoint =
+            findEndpoint(
+                resolvedEndpointId
+            );
 
-            selectedTestQP.request =
-                selectedTestQP.request ||
-                {};
+        if (!endpoint) {
 
-            const savedRequest =
-                requestResult?.data;
+            await loadEndpointsFromBackend();
 
-            if (
-                savedRequest?.body !==
-                undefined
-            ) {
+            endpoint =
+                findEndpoint(
+                    resolvedEndpointId
+                );
 
-                selectedTestQP.request.body =
-                    savedRequest.body;
+        }
 
-            } else if (
-                savedRequest !==
-                undefined
-            ) {
+        if (!endpoint) {
 
-                selectedTestQP.request.body =
-                    savedRequest;
+            endpoint = {
 
-            }
+                id:
+                    resolvedEndpointId,
 
-            if (
-                savedRequest?.headers
-            ) {
+                method,
 
-                selectedTestQP.request.headers =
-                    savedRequest.headers;
+                endpoint_str:
+                    endpointStr,
 
-            }
+                endpoint:
+                    endpointPath?.value.trim() ||
+                    endpointStr,
+
+                baseUrl:
+                    baseUrl?.value.trim() ||
+                    "",
+
+                annotation:
+                    annotationInput?.value ||
+                    "",
+
+                qps: [],
+
+                tags: []
+
+            };
+
+            endpoints.push(
+                endpoint
+            );
+
+        }
+
+        if (
+            !Array.isArray(
+                endpoint.qps
+            )
+        ) {
+
+            endpoint.qps =
+                [];
+
+        }
+
+        let qp =
+            endpoint.qps.find(
+                candidate =>
+                    String(candidate.id) ===
+                    String(selectedTestQP?.id)
+            );
+
+        if (!qp) {
+
+            qp =
+                selectedTestQP
+                    ? JSON.parse(
+                        JSON.stringify(
+                            selectedTestQP
+                        )
+                    )
+                    : {
+
+                        id:
+                            "default",
+
+                        name:
+                            "Default Request",
+
+                        request: {
+
+                            headers: {},
+
+                            body: {}
+
+                        },
+
+                        response: {}
+
+                    };
+
+            endpoint.qps.push(
+                qp
+            );
+
+        }
+
+        // -------------------------------------
+        // APPLY REQUEST DATA DIRECTLY
+        // -------------------------------------
+
+        qp.request =
+            qp.request ||
+            {};
+
+        const savedRequest =
+            requestResult.data;
+
+        if (
+            savedRequest?.body !==
+            undefined
+        ) {
+
+            qp.request.body =
+                savedRequest.body;
+
+        } else if (
+            savedRequest !==
+            undefined
+        ) {
+
+            qp.request.body =
+                savedRequest;
+
+        }
+
+        if (
+            savedRequest?.headers
+        ) {
+
+            qp.request.headers =
+                savedRequest.headers;
 
         }
 
@@ -3503,55 +4063,50 @@ async function runTestEndpoint() {
         const elapsed =
             event.payload?.response_time_ms ??
             event.payload?.elapsed_ms ??
+            event.payload?.elapsed ??
             event.response_time_ms ??
             event.elapsed_ms ??
-            Math.round(
-                performance.now() -
-                testRunStartedAt
-            );
+            event.elapsed ??
+            null;
 
         // -------------------------------------
-        // RESPONSE
+        // APPLY RESPONSE DATA DIRECTLY
         // -------------------------------------
 
-        if (selectedTestQP) {
+        qp.response =
+            qp.response ||
+            {};
 
-            selectedTestQP.response =
-                selectedTestQP.response ||
-                {};
+        const savedResponse =
+            responseResult.data;
 
-            const savedResponse =
-                responseResult?.data;
+        if (
+            savedResponse?.body !==
+            undefined
+        ) {
 
-            if (
-                savedResponse?.body !==
-                undefined
-            ) {
+            qp.response.body =
+                savedResponse.body;
 
-                selectedTestQP.response.body =
-                    savedResponse.body;
+        } else if (
+            savedResponse !==
+            undefined
+        ) {
 
-            } else if (
-                savedResponse !==
-                undefined
-            ) {
+            qp.response.body =
+                savedResponse;
 
-                selectedTestQP.response.body =
-                    savedResponse;
+        }
 
-            }
+        qp.response.status =
+            statusCode;
 
-            selectedTestQP.response.status =
-                statusCode;
+        if (
+            savedResponse?.headers
+        ) {
 
-            if (
-                savedResponse?.headers
-            ) {
-
-                selectedTestQP.response.headers =
-                    savedResponse.headers;
-
-            }
+            qp.response.headers =
+                savedResponse.headers;
 
         }
 
@@ -3571,17 +4126,42 @@ async function runTestEndpoint() {
         saveLocalQPs();
 
         // -------------------------------------
-        // DISPLAY RESULT
+        // SELECT / DISPLAY
         // -------------------------------------
+
+        selectedTestEndpoint =
+            endpoint;
+
+        selectedTestQP =
+            qp;
+
+        activeRequestNumber =
+            requestNumber;
+
+        renderSelectedEndpointTags();
+
+        renderTestQP(
+            endpoint,
+            qp.id
+        );
+
+        updateSelectedEndpointHighlight();
 
         renderCurrentRequest();
 
         renderCurrentResponse();
 
-        /*
-         * Make sure the newly created endpoint
-         * appears in the sidebar.
-         */
+        applyTestFilters();
+
+        // -------------------------------------
+        // REFRESH TAGS
+        // -------------------------------------
+
+        await refreshSelectedEndpointTags();
+
+        // -------------------------------------
+        // UPDATE SIDEBAR
+        // -------------------------------------
 
         if (
             activeSidebarTab ===
@@ -3673,11 +4253,12 @@ async function runTestEndpoint() {
         );
 
     }
+
 }
 
-// =========================================
+// ============================================================
 // WAIT FOR WS OPEN
-// =========================================
+// ============================================================
 
 function waitForWebSocketOpen(ws) {
 
@@ -3692,6 +4273,7 @@ function waitForWebSocketOpen(ws) {
                 resolve();
 
                 return;
+
             }
 
             const handleOpen =
@@ -3746,9 +4328,9 @@ function waitForWebSocketOpen(ws) {
 
 }
 
-// =========================================
+// ============================================================
 // TEST STARTED
-// =========================================
+// ============================================================
 
 function handleTestStarted(event) {
 
@@ -3759,7 +4341,9 @@ function handleTestStarted(event) {
 
     const requestNumber =
         event.payload?.request_number ??
-        event.request_number;
+        event.payload?.requestNumber ??
+        event.request_number ??
+        event.requestNumber;
 
     if (
         requestNumber !==
@@ -3770,6 +4354,71 @@ function handleTestStarted(event) {
 
         activeRequestNumber =
             requestNumber;
+
+    }
+
+    /*
+     * Backend may provide the endpoint ID
+     * when an endpoint is auto-created.
+     *
+     * Capture it immediately so Stop works.
+     */
+
+    const endpointId =
+        event.payload?.endpoint_id ??
+        event.payload?.endpointId ??
+        event.endpoint_id ??
+        event.endpointId;
+
+    if (
+        endpointId !==
+        undefined &&
+        endpointId !==
+        null
+    ) {
+
+        if (!selectedTestEndpoint) {
+
+            selectedTestEndpoint = {
+
+                id:
+                    endpointId,
+
+                method:
+                    testMethod?.value ||
+                    "GET",
+
+                endpoint_str:
+                    getCurrentEndpointInput(),
+
+                endpoint:
+                    endpointPath?.value ||
+                    "",
+
+                baseUrl:
+                    baseUrl?.value ||
+                    "",
+
+                qps:
+                    [],
+
+                tags:
+                    []
+
+            };
+
+            endpoints.push(
+                selectedTestEndpoint
+            );
+
+        } else {
+
+            selectedTestEndpoint.id =
+                endpointId;
+
+        }
+
+        updateSelectedEndpointHighlight();
 
     }
 
@@ -3794,9 +4443,9 @@ function handleTestStarted(event) {
 
 }
 
-// =========================================
+// ============================================================
 // TIMER TICK
-// =========================================
+// ============================================================
 
 function handleTestTick(event) {
 
@@ -3848,9 +4497,9 @@ function handleTestTick(event) {
 
 }
 
-// =========================================
+// ============================================================
 // TEST FINISHED
-// =========================================
+// ============================================================
 
 function handleTestFinished(event) {
 
@@ -3861,7 +4510,9 @@ function handleTestFinished(event) {
 
     const requestNumber =
         event.payload?.request_number ??
-        event.request_number;
+        event.payload?.requestNumber ??
+        event.request_number ??
+        event.requestNumber;
 
     if (
         requestNumber !==
@@ -3877,9 +4528,9 @@ function handleTestFinished(event) {
 
 }
 
-// =========================================
+// ============================================================
 // TEST TIMEOUT
-// =========================================
+// ============================================================
 
 function handleTestTimeout(event) {
 
@@ -3905,9 +4556,9 @@ function handleTestTimeout(event) {
 
 }
 
-// =========================================
+// ============================================================
 // TEST ERROR
-// =========================================
+// ============================================================
 
 function handleTestError(event) {
 
@@ -3937,9 +4588,9 @@ function handleTestError(event) {
 
 }
 
-// =========================================
+// ============================================================
 // STOP
-// =========================================
+// ============================================================
 
 async function stopTestEndpoint() {
 
@@ -3963,6 +4614,7 @@ async function stopTestEndpoint() {
         );
 
         return;
+
     }
 
     if (
@@ -3977,6 +4629,22 @@ async function stopTestEndpoint() {
         );
 
         return;
+
+    }
+
+    if (
+        selectedTestEndpoint.id ===
+            undefined ||
+        selectedTestEndpoint.id ===
+            null
+    ) {
+
+        console.warn(
+            "No backend endpoint ID available to stop."
+        );
+
+        return;
+
     }
 
     const requestNumberToStop =
@@ -4050,9 +4718,9 @@ async function stopTestEndpoint() {
 
 }
 
-// =========================================
+// ============================================================
 // RUN BUTTON STATE
-// =========================================
+// ============================================================
 
 function setRunButtonState(
     isRunning
@@ -4075,9 +4743,9 @@ function setRunButtonState(
 
 }
 
-// =========================================
+// ============================================================
 // STATUS
-// =========================================
+// ============================================================
 
 function getStatusText(status) {
 
@@ -4109,9 +4777,9 @@ function getStatusText(status) {
 
 }
 
-// =========================================
+// ============================================================
 // TAGS
-// =========================================
+// ============================================================
 
 function setupTags() {
 
@@ -4174,14 +4842,16 @@ function setupTags() {
 
 }
 
-// =========================================
+// ============================================================
 // ADD TAG
-// =========================================
+// ============================================================
 
-function addTestTag() {
+async function addTestTag() {
 
     if (!selectedTestEndpoint) {
+
         return;
+
     }
 
     const tag =
@@ -4203,31 +4873,169 @@ function addTestTag() {
     }
 
     if (
-        !selectedTestEndpoint.tags.includes(
+        selectedTestEndpoint.tags.includes(
             tag
         )
     ) {
+
+        if (tagInput) {
+
+            tagInput.value =
+                "";
+
+        }
+
+        return;
+
+    }
+
+    try {
+
+        /*
+         * Persist through the actual backend
+         * endpoint-tags API first.
+         */
+
+        await addEndpointTag(
+            selectedTestEndpoint.id,
+            tag
+        );
+
+        /*
+         * Update local state only after the
+         * backend operation succeeds.
+         */
 
         selectedTestEndpoint.tags.push(
             tag
         );
 
+        const endpoint =
+            findEndpoint(
+                selectedTestEndpoint.id
+            );
+
+        if (endpoint) {
+
+            endpoint.tags =
+                selectedTestEndpoint.tags;
+
+        }
+
+        if (tagInput) {
+
+            tagInput.value =
+                "";
+
+        }
+
+        renderSelectedEndpointTags();
+
+        applyTestFilters();
+
+        console.log(
+            "Endpoint tag added:",
+            {
+                endpointId:
+                    selectedTestEndpoint.id,
+
+                tag
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Failed to add endpoint tag:",
+            error
+        );
+
+        window.alert(
+            error?.message ||
+            "Could not add tag."
+        );
+
     }
-
-    if (tagInput) {
-
-        tagInput.value =
-            "";
-
-    }
-
-    renderSelectedEndpointTags();
 
 }
 
-// =========================================
+// ============================================================
+// REMOVE TAG
+// ============================================================
+
+async function removeTestTag(tag) {
+
+    if (
+        !selectedTestEndpoint ||
+        selectedTestEndpoint.id === undefined ||
+        selectedTestEndpoint.id === null
+    ) {
+
+        return;
+
+    }
+
+    try {
+
+        await removeEndpointTag(
+            selectedTestEndpoint.id,
+            tag
+        );
+
+        selectedTestEndpoint.tags =
+            (
+                selectedTestEndpoint.tags ||
+                []
+            ).filter(
+                existingTag =>
+                    existingTag !== tag
+            );
+
+        const endpoint =
+            findEndpoint(
+                selectedTestEndpoint.id
+            );
+
+        if (endpoint) {
+
+            endpoint.tags =
+                selectedTestEndpoint.tags;
+
+        }
+
+        renderSelectedEndpointTags();
+
+        applyTestFilters();
+
+        console.log(
+            "Endpoint tag removed:",
+            {
+                endpointId:
+                    selectedTestEndpoint.id,
+
+                tag
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Failed to remove endpoint tag:",
+            error
+        );
+
+        window.alert(
+            error?.message ||
+            "Could not remove tag."
+        );
+
+    }
+
+}
+
+// ============================================================
 // RENDER TAGS
-// =========================================
+// ============================================================
 
 function renderSelectedEndpointTags() {
 
@@ -4251,6 +5059,7 @@ function renderSelectedEndpointTags() {
         `;
 
         return;
+
     }
 
     selectedTestEndpoint.tags.forEach(
@@ -4262,7 +5071,12 @@ function renderSelectedEndpointTags() {
                 );
 
             element.className = `
-                px-3 py-1 rounded-full
+                inline-flex
+                items-center
+                gap-1
+                px-3
+                py-1
+                rounded-full
                 bg-cyan-500/15
                 text-cyan-300
                 text-xs
@@ -4270,8 +5084,57 @@ function renderSelectedEndpointTags() {
                 border-cyan-500/20
             `;
 
-            element.textContent =
+            const text =
+                document.createElement(
+                    "span"
+                );
+
+            text.textContent =
                 tag;
+
+            const removeButton =
+                document.createElement(
+                    "button"
+                );
+
+            removeButton.type =
+                "button";
+
+            removeButton.className = `
+                ml-1
+                text-cyan-400
+                hover:text-white
+                text-sm
+                leading-none
+            `;
+
+            removeButton.textContent =
+                "×";
+
+            removeButton.title =
+                "Remove tag";
+
+            removeButton.addEventListener(
+                "click",
+                event => {
+
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    removeTestTag(
+                        tag
+                    );
+
+                }
+            );
+
+            element.appendChild(
+                text
+            );
+
+            element.appendChild(
+                removeButton
+            );
 
             endpointTags.appendChild(
                 element
@@ -4282,9 +5145,9 @@ function renderSelectedEndpointTags() {
 
 }
 
-// =========================================
+// ============================================================
 // TABS
-// =========================================
+// ============================================================
 
 function setupTabs() {
 
@@ -4314,19 +5177,18 @@ function setupTabs() {
 
     updateContentTabButtons(
         "request",
-        "headers"
+        "body"
     );
 
     updateContentTabButtons(
         "response",
-        "headers"
+        "body"
     );
-
 }
 
-// =========================================
+// ============================================================
 // CONTENT TAB
-// =========================================
+// ============================================================
 
 function setupContentTab(
     buttonId,
@@ -4376,9 +5238,9 @@ function setupContentTab(
 
 }
 
-// =========================================
+// ============================================================
 // CONTENT TAB BUTTONS
-// =========================================
+// ============================================================
 
 function updateContentTabButtons(
     panel,
@@ -4449,9 +5311,9 @@ function updateContentTabButtons(
 
 }
 
-// =========================================
+// ============================================================
 // PANEL CONTROLS
-// =========================================
+// ============================================================
 
 function setupPanelControls() {
 
@@ -4544,9 +5406,9 @@ function setupPanelControlSet(
 
 }
 
-// =========================================
+// ============================================================
 // PANEL COLLAPSE
-// =========================================
+// ============================================================
 
 function collapsePanel(panel) {
 
@@ -4574,9 +5436,9 @@ function collapsePanel(panel) {
 
 }
 
-// =========================================
+// ============================================================
 // FULLSCREEN
-// =========================================
+// ============================================================
 
 function togglePanelFullscreen(
     panel,
@@ -4621,9 +5483,9 @@ function togglePanelFullscreen(
 
 }
 
-// =========================================
+// ============================================================
 // RESET PANELS
-// =========================================
+// ============================================================
 
 function resetPanels() {
 
@@ -4661,9 +5523,9 @@ function resetPanels() {
 
 }
 
-// =========================================
+// ============================================================
 // SIDEBAR TABS
-// =========================================
+// ============================================================
 
 function setupSidebarTabs() {
 
@@ -4724,6 +5586,10 @@ function setupSidebarTab(
 
 }
 
+// ============================================================
+// SIDEBAR TAB BUTTONS
+// ============================================================
+
 function updateSidebarTabButtons() {
 
     const tabs = {
@@ -4771,11 +5637,166 @@ function updateSidebarTabButtons() {
         }
     );
 
+    requestAnimationFrame(
+        updateSidebarTabUnderline
+    );
+
 }
 
-// =========================================
+// ============================================================
+// SIDEBAR TAB UNDERLINE
+// ============================================================
+
+function updateSidebarTabUnderline() {
+
+    const tabs = [
+
+        document.getElementById(
+            "historyTab"
+        ),
+
+        document.getElementById(
+            "bookmarksTab"
+        ),
+
+        document.getElementById(
+            "endpointsTab"
+        )
+
+    ].filter(Boolean);
+
+    if (
+        tabs.length === 0
+    ) {
+        return;
+    }
+
+    const activeTab =
+        tabs.find(
+            tab => {
+
+                if (
+                    tab.id ===
+                    "historyTab"
+                ) {
+
+                    return (
+                        activeSidebarTab ===
+                        "history"
+                    );
+
+                }
+
+                if (
+                    tab.id ===
+                    "bookmarksTab"
+                ) {
+
+                    return (
+                        activeSidebarTab ===
+                        "bookmarks"
+                    );
+
+                }
+
+                return (
+                    activeSidebarTab ===
+                    "endpoints"
+                );
+
+            }
+        );
+
+    if (!activeTab) {
+        return;
+    }
+
+    const parent =
+        activeTab.parentElement;
+
+    if (!parent) {
+        return;
+    }
+
+    if (
+        getComputedStyle(parent)
+            .position ===
+        "static"
+    ) {
+
+        parent.style.position =
+            "relative";
+
+    }
+
+    let underline =
+        document.getElementById(
+            "testSidebarTabUnderline"
+        );
+
+    if (!underline) {
+
+        underline =
+            document.createElement(
+                "div"
+            );
+
+        underline.id =
+            "testSidebarTabUnderline";
+
+        underline.className = `
+            absolute
+            bottom-0
+            h-0.5
+            rounded-full
+            bg-sky-400
+            transition-all
+            duration-200
+            ease-out
+            pointer-events-none
+        `;
+
+        parent.appendChild(
+            underline
+        );
+
+    }
+
+    const parentRect =
+        parent.getBoundingClientRect();
+
+    const activeRect =
+        activeTab.getBoundingClientRect();
+
+    underline.style.width =
+        `${activeRect.width}px`;
+
+    underline.style.transform =
+        `translateX(${
+            activeRect.left -
+            parentRect.left
+        }px)`;
+
+}
+
+// ============================================================
+// SIDEBAR UNDERLINE ON RESIZE
+// ============================================================
+
+window.addEventListener(
+    "resize",
+    () => {
+
+        requestAnimationFrame(
+            updateSidebarTabUnderline
+        );
+
+    }
+);
+
+// ============================================================
 // SIDEBAR COLLAPSE
-// =========================================
+// ============================================================
 
 function setupSidebarCollapse() {
 
@@ -4814,12 +5835,12 @@ function setupSidebarCollapse() {
 
 }
 
-// =========================================
+// ============================================================
 // ADDRESS MODE
-// =========================================
+// ============================================================
 
 let addressCombinedMode =
-false;
+    false;
 
 function setupAddressMode() {
 
@@ -4876,9 +5897,9 @@ function setupAddressMode() {
 
 }
 
-// =========================================
+// ============================================================
 // ADDRESS HELPERS
-// =========================================
+// ============================================================
 
 function syncAddressFullDisplay() {
 
@@ -4937,9 +5958,9 @@ function applyFullAddressToSplit() {
 
 }
 
-// =========================================
+// ============================================================
 // HELPERS
-// =========================================
+// ============================================================
 
 function findEndpoint(
     endpointId
@@ -4957,12 +5978,33 @@ function getBookmarkEndpointId(
     bookmark
 ) {
 
+    if (
+        bookmark === undefined ||
+        bookmark === null
+    ) {
+
+        return null;
+
+    }
+
+    if (
+        typeof bookmark !==
+        "object"
+    ) {
+
+        return bookmark;
+
+    }
+
     return (
         bookmark.endpointId ??
-        bookmark.endpoint_id
+        bookmark.endpoint_id ??
+        bookmark.id ??
+        null
     );
 
 }
+
 function activeTestEndpointIdFromState() {
 
     if (
@@ -4977,6 +6019,7 @@ function activeTestEndpointIdFromState() {
     }
 
     return null;
+
 }
 
 function isEndpointBookmarked(
@@ -5021,6 +6064,7 @@ function formatEndpointDate(
     ) {
 
         return dateString;
+
     }
 
     const now =

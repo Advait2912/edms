@@ -4,1226 +4,2110 @@
 // ============================================================
 
 (() => {
-'use strict';
+    'use strict';
 
-// ============================================================
-// CONFIG
-// ============================================================
 
-const API_BASE = 'http://localhost:3000';
+    // ============================================================
+    // CONFIG
+    // ============================================================
 
-const WS_BASE = 'ws://localhost:3000';
+    const API_BASE = 'http://localhost:3000';
+    const WS_BASE = 'ws://localhost:3000';
 
-// ============================================================
-// HTTP HELPER
-// ============================================================
 
-async function http(method, path, body) {
+    // ============================================================
+    // HTTP HELPER
+    // ============================================================
 
-    const response =
-        await fetch(
-            `${API_BASE}${path}`,
-            {
-                method,
+    async function http(
+        method,
+        path,
+        body
+    ) {
 
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+        const options = {
+            method,
 
-                body:
-                    body === undefined
-                        ? undefined
-                        : JSON.stringify(body)
+            headers: {
+                'Content-Type': 'application/json'
             }
-        );
+        };
 
 
-    const text =
-        await response.text();
+        if (body !== undefined) {
+
+            options.body =
+                JSON.stringify(body);
+
+        }
 
 
-    let data;
+        const response =
+            await fetch(
+                `${API_BASE}${path}`,
+                options
+            );
 
 
-    try {
+        const text =
+            await response.text();
 
-        data =
-            JSON.parse(text);
 
-    } catch {
+        let data;
 
-        data =
-            text;
+
+        try {
+
+            data =
+                text
+                    ? JSON.parse(text)
+                    : null;
+
+        } catch {
+
+            data =
+                text;
+
+        }
+
+
+        return {
+
+            status:
+                response.status,
+
+            ok:
+                response.ok,
+
+            data
+
+        };
 
     }
 
 
-    return {
+    // ============================================================
+    // WEBSOCKET HELPER
+    // ============================================================
 
-        status:
-            response.status,
+    function createWebSocket(
+        path,
+        options = {}
+    ) {
 
-        ok:
-            response.ok,
+        return new WebSocket(
+            `${WS_BASE}${path}`,
+            options.protocols
+        );
 
-        data
+    }
 
-    };
 
-}
+    // ============================================================
+    // R1 — ENDPOINTS
+    // ============================================================
 
-// ============================================================
-// R1 — REGISTER ENDPOINT
-// ============================================================
+    async function registerEndpoint(
+        endpointId,
+        endpointUrl,
+        method,
+        annotation
+    ) {
 
-async function registerEndpoint(
-    endpointId,
-    endpointUrl,
-    method
-) {
+        const body = {
 
-    return http(
-        'POST',
-        '/endpoints/create',
-        {
             endpoint_id:
                 endpointId,
 
             endpoint_str:
-                endpointUrl,
+                endpointUrl
 
-            method:
-                method
+        };
+
+
+        if (method !== undefined) {
+
+            body.method =
+                method;
+
         }
-    );
-
-}
-
-// ============================================================
-// ONE-TIME BULK REGISTRATION UTILITY
-// ============================================================
-
-async function registerAllEndpoints(endpointList) {
-
-    const results = [];
 
 
-    for (const endpoint of endpointList) {
+        if (annotation !== undefined) {
 
-        const url =
-            (endpoint.baseUrl || '') +
-            (endpoint.endpoint || '');
+            body.annotation =
+                annotation;
 
-
-        const result =
-            await registerEndpoint(
-                endpoint.id,
-                url,
-                endpoint.method
-            );
+        }
 
 
-        results.push({
-
-            id:
-                endpoint.id,
-
-            status:
-                result.status,
-
-            ok:
-                result.ok
-
-        });
-
-
-        console.log(
-            `Registered ${endpoint.id}:`,
-            result.status
+        return http(
+            'POST',
+            '/endpoints/create',
+            body
         );
 
     }
 
 
-    return results;
+    // ============================================================
+    // ONE-TIME BULK REGISTRATION UTILITY
+    // ============================================================
 
-}
+    async function registerAllEndpoints(
+        endpointList
+    ) {
 
-// ============================================================
-// TEST VIEW — STATIC METADATA
-// ============================================================
-
-async function getTestView() {
-
-    return http(
-        'GET',
-        '/test-view'
-    );
-
-}
-
-// ============================================================
-// COLLECTIONS — SYSTEM 2
-// ============================================================
-
-async function listCollections() {
-
-    return http(
-        'GET',
-        '/collections/list'
-    );
-
-}
+        const results = [];
 
 
-async function getCollection(name) {
+        for (
+            const endpoint of endpointList
+        ) {
 
-    return http(
-        'GET',
-        `/collections/${encodeURIComponent(name)}`
-    );
-
-}
-
-
-async function createCollection(name) {
-
-    return http(
-        'POST',
-        '/collections/create',
-        {
-            name
-        }
-    );
-
-}
+            const url =
+                (endpoint.baseUrl || '') +
+                (endpoint.endpoint || '');
 
 
-async function renameCollection(
-    name,
-    newName
-) {
-
-    return http(
-        'POST',
-        `/collections/${encodeURIComponent(name)}/rename`,
-        {
-            new_name:
-                newName
-        }
-    );
-
-}
-
-
-async function deleteCollection(name) {
-
-    return http(
-        'POST',
-        `/collections/${encodeURIComponent(name)}/delete`
-    );
-
-}
-
-
-async function listCollectionEndpoints(name) {
-
-    return http(
-        'GET',
-        `/collections/${encodeURIComponent(name)}/endpoints`
-    );
-
-}
-// ============================================================
-// WS — LOAD COLLECTION INTO ACTIVE BOOKMARK WORKSPACE
-// ============================================================
-
-function loadCollection(name) {
-
-    return new Promise(
-        (resolve, reject) => {
-
-            const ws =
-                new WebSocket(
-                    `${WS_BASE}/bookmarks/${encodeURIComponent(name)}/load`
+            const result =
+                await registerEndpoint(
+                    endpoint.id,
+                    url,
+                    endpoint.method,
+                    endpoint.annotation
                 );
 
 
-            let settled = false;
+            results.push({
+
+                id:
+                    endpoint.id,
+
+                status:
+                    result.status,
+
+                ok:
+                    result.ok
+
+            });
 
 
-            const finish = (
-                callback,
-                value
-            ) => {
-
-                if (settled) return;
-
-                settled =
-                    true;
-
-                try {
-                    ws.close();
-                } catch {}
-
-                callback(value);
-
-            };
-
-
-            ws.addEventListener(
-                'open',
-                () => {
-
-                    // The collection name is already part
-                    // of the WebSocket URL.
-
-                }
+            console.log(
+                `Registered ${endpoint.id}:`,
+                result.status
             );
 
+        }
 
-            ws.addEventListener(
-                'message',
-                event => {
+
+        return results;
+
+    }
+
+
+    // ============================================================
+    // DELETE ENDPOINT
+    // ============================================================
+
+    async function deleteEndpoint(
+        endpointId
+    ) {
+
+        return http(
+            'POST',
+            `/endpoints/${encodeURIComponent(endpointId)}/delete`
+        );
+
+    }
+
+
+    // ============================================================
+    // STATIC VIEW METADATA
+    // ============================================================
+
+    async function getHome() {
+
+        return http(
+            'GET',
+            '/home'
+        );
+
+    }
+
+
+    async function getTestView() {
+
+        return http(
+            'GET',
+            '/test-view'
+        );
+
+    }
+
+
+    async function getListView() {
+
+        return http(
+            'GET',
+            '/list-view'
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — WEBSOCKETS
+    // ============================================================
+
+    function connectTestView() {
+
+        return createWebSocket(
+            '/test-view/run'
+        );
+
+    }
+
+
+    function connectEndpointLoader() {
+
+        return createWebSocket(
+            '/test-view/endpoints/load'
+        );
+
+    }
+
+
+    function connectBookmarkLoader() {
+
+        return createWebSocket(
+            '/test-view/bookmarks/load'
+        );
+
+    }
+
+
+    function connectHistoryLoader() {
+
+        return createWebSocket(
+            '/test-view/history/load'
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — START TEST
+    // ============================================================
+
+    function startTest(
+        ws,
+        endpointId,
+        endpointStr,
+        method,
+        body = {},
+        timeoutMs = 30000,
+        tickIntervalMs = 500,
+        headers,
+        annotation
+    ) {
+
+        const payload = {
+
+            endpoint_str:
+                endpointStr,
+
+            method:
+                method,
+
+            body:
+                body,
+
+            timeout_ms:
+                timeoutMs,
+
+            tick_interval_ms:
+                tickIntervalMs
+
+        };
+
+
+        // endpoint_id became optional in the
+        // backend update from 2026-09-08.
+
+        if (
+            endpointId !== undefined &&
+            endpointId !== null &&
+            endpointId !== ''
+        ) {
+
+            payload.endpoint_id =
+                endpointId;
+
+        }
+
+
+        if (
+            headers !== undefined
+        ) {
+
+            payload.headers =
+                headers;
+
+        }
+
+
+        if (
+            annotation !== undefined
+        ) {
+
+            payload.annotation =
+                annotation;
+
+        }
+
+
+        ws.send(
+            JSON.stringify({
+
+                type:
+                    'run_test',
+
+                payload
+
+            })
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — WAIT FOR TEST EVENTS
+    // ============================================================
+
+    function waitForTestFinished(
+        ws,
+        handlers = {}
+    ) {
+
+        return new Promise(
+            (
+                resolve,
+                reject
+            ) => {
+
+                function handleMessage(
+                    wsEvent
+                ) {
 
                     try {
 
                         const message =
                             JSON.parse(
-                                event.data
+                                wsEvent.data
                             );
 
 
-                        if (
-                            message.type ===
-                            'error'
-                        ) {
+                        const event =
+                            message.event;
 
-                            finish(
-                                reject,
-                                new Error(
-                                    message.message ||
-                                    message.payload?.message ||
-                                    'Could not load collection.'
-                                )
-                            );
+
+                        if (!event) {
 
                             return;
 
                         }
 
 
-                        finish(
-                            resolve,
-                            message
-                        );
-
-                    } catch (error) {
-
-                        finish(
-                            reject,
-                            error
-                        );
-
-                    }
-
-                }
-            );
-
-
-            ws.addEventListener(
-                'error',
-                error => {
-
-                    finish(
-                        reject,
-                        error
-                    );
-
-                }
-            );
-
-        }
-    );
-
-}
-
-
-async function removeEndpointFromCollection(
-    name,
-    endpointId
-) {
-
-    return http(
-        'POST',
-        `/collections/${encodeURIComponent(name)}/endpoints/remove`,
-        {
-            endpoint_id:
-                endpointId
-        }
-    );
-
-}
-
-// ============================================================
-// COLLECTION TAGS — SYSTEM 2
-// ============================================================
-
-async function createGlobalTag(
-    name,
-    endpointIds
-) {
-
-    return http(
-        'POST',
-        '/collections/tags/create',
-        {
-            name,
-
-            endpoint_ids:
-                endpointIds
-        }
-    );
-
-}
-
-
-async function deleteGlobalTags(names) {
-
-    return http(
-        'POST',
-        '/collections/tags/delete',
-        {
-            names
-        }
-    );
-
-}
-
-
-async function renameGlobalTag(
-    oldName,
-    newName
-) {
-
-    return http(
-        'POST',
-        '/collections/tags/rename',
-        {
-            old_name:
-                oldName,
-
-            new_name:
-                newName
-        }
-    );
-
-}
-
-
-async function listGlobalTags() {
-
-    return http(
-        'GET',
-        '/collections/tags/list'
-    );
-
-}
-
-
-async function addMembershipTag(
-    collectionName,
-    tag
-) {
-
-    return http(
-        'POST',
-        `/collections/${encodeURIComponent(collectionName)}/membership-tags/add`,
-        {
-            tag
-        }
-    );
-
-}
-
-
-async function removeMembershipTag(
-    collectionName,
-    tag
-) {
-
-    return http(
-        'POST',
-        `/collections/${encodeURIComponent(collectionName)}/membership-tags/remove`,
-        {
-            tag
-        }
-    );
-
-}
-
-
-async function listMembershipTags(
-    collectionName
-) {
-
-    return http(
-        'GET',
-        `/collections/${encodeURIComponent(collectionName)}/membership-tags`
-    );
-
-}
-
-
-async function listCollectionsByTag(tagName) {
-
-    return http(
-        'GET',
-        `/collections/by-tag/${encodeURIComponent(tagName)}`
-    );
-
-}
-
-// ============================================================
-// WS — TEST VIEW RUN
-// ============================================================
-
-function connectTestView() {
-
-    return new WebSocket(
-        `${WS_BASE}/test-view/run`
-    );
-
-}
-
-// ============================================================
-// WS — ENDPOINT SNAPSHOT
-// ============================================================
-
-function connectEndpointLoader() {
-
-    return new WebSocket(
-        `${WS_BASE}/test-view/endpoints/load`
-    );
-
-}
-
-// ============================================================
-// WS — TEST VIEW BOOKMARK SNAPSHOT
-// ============================================================
-
-function connectBookmarkLoader() {
-
-    return new WebSocket(
-        `${WS_BASE}/test-view/bookmarks/load`
-    );
-
-}
-
-// ============================================================
-// WS — TEST VIEW HISTORY SNAPSHOT
-// ============================================================
-
-function connectHistoryLoader() {
-
-    return new WebSocket(
-        `${WS_BASE}/test-view/history/load`
-    );
-
-}
-
-// ============================================================
-// WS — START TEST
-// ============================================================
-
-function startTest(
-    ws,
-    endpointId,
-    endpointStr,
-    method,
-    body = {},
-    timeoutMs = 30000,
-    tickIntervalMs = 500,
-    headers,
-    annotation
-) {
-
-    const payload = {
-
-        endpoint_id:
-            endpointId,
-
-        endpoint_str:
-            endpointStr,
-
-        method:
-            method,
-
-        body:
-            body,
-
-        timeout_ms:
-            timeoutMs,
-
-        tick_interval_ms:
-            tickIntervalMs
-
-    };
-
-
-    if (
-        headers !== undefined
-    ) {
-
-        payload.headers =
-            headers;
-
-    }
-
-
-    if (
-        annotation !== undefined
-    ) {
-
-        payload.annotation =
-            annotation;
-
-    }
-
-
-    const message = {
-
-        type:
-            'run_test',
-
-        payload
-
-    };
-
-
-    ws.send(
-        JSON.stringify(message)
-    );
-
-}
-
-// ============================================================
-// WS — ADD TO ACTIVE BOOKMARKS
-// ============================================================
-
-function addActiveBookmark(
-    endpointId
-) {
-
-    return new Promise(
-        (resolve, reject) => {
-
-            const ws =
-                new WebSocket(
-                    `${WS_BASE}/test-view/active/add`
-                );
-
-
-            let settled = false;
-
-
-            const finish = (
-                callback,
-                value
-            ) => {
-
-                if (settled) return;
-
-                settled =
-                    true;
-
-                try {
-                    ws.close();
-                } catch {}
-
-                callback(value);
-
-            };
-
-
-            ws.addEventListener(
-                'open',
-                () => {
-
-                    ws.send(
-                        JSON.stringify({
-                            endpoint_id:
-                                endpointId
-                        })
-                    );
-
-                }
-            );
-
-
-            ws.addEventListener(
-                'message',
-                event => {
-
-                    try {
-
-                        const message =
-                            JSON.parse(
-                                event.data
-                            );
-
+                        // ----------------------------------------
+                        // Test Started
+                        // ----------------------------------------
 
                         if (
-                            message.type ===
-                            'error'
+                            event.type ===
+                            'TestStarted'
                         ) {
 
-                            finish(
-                                reject,
-                                new Error(
-                                    message.message ||
-                                    message.payload?.message ||
-                                    'Could not add endpoint to bookmarks.'
-                                )
-                            );
+                            if (
+                                typeof handlers.onStarted ===
+                                'function'
+                            ) {
+
+                                handlers.onStarted(
+                                    event
+                                );
+
+                            }
 
                             return;
 
                         }
 
 
-                        finish(
-                            resolve,
-                            message
-                        );
+                        // ----------------------------------------
+                        // Timer Tick
+                        // ----------------------------------------
+
+                        if (
+                            event.type ===
+                            'TimerTick'
+                        ) {
+
+                            if (
+                                typeof handlers.onTick ===
+                                'function'
+                            ) {
+
+                                handlers.onTick(
+                                    event
+                                );
+
+                            }
+
+                            return;
+
+                        }
+
+
+                        // ----------------------------------------
+                        // Test Finished
+                        // ----------------------------------------
+
+                        if (
+                            event.type ===
+                            'TestFinished'
+                        ) {
+
+                            cleanup();
+
+
+                            if (
+                                typeof handlers.onFinished ===
+                                'function'
+                            ) {
+
+                                handlers.onFinished(
+                                    event
+                                );
+
+                            }
+
+
+                            resolve(
+                                event
+                            );
+
+
+                            return;
+
+                        }
+
+
+                        // ----------------------------------------
+                        // Test Timeout
+                        // ----------------------------------------
+
+                        if (
+                            event.type ===
+                            'TestTimeout'
+                        ) {
+
+                            cleanup();
+
+
+                            if (
+                                typeof handlers.onTimeout ===
+                                'function'
+                            ) {
+
+                                handlers.onTimeout(
+                                    event
+                                );
+
+                            }
+
+
+                            reject(
+                                new Error(
+                                    'Backend reported TestTimeout'
+                                )
+                            );
+
+
+                            return;
+
+                        }
+
+
+                        // ----------------------------------------
+                        // Backend Error
+                        // ----------------------------------------
+
+                        if (
+                            event.type ===
+                            'Error'
+                        ) {
+
+                            cleanup();
+
+
+                            if (
+                                typeof handlers.onError ===
+                                'function'
+                            ) {
+
+                                handlers.onError(
+                                    event
+                                );
+
+                            }
+
+
+                            reject(
+                                new Error(
+                                    event.payload?.message ||
+                                    'Backend returned Error'
+                                )
+                            );
+
+
+                            return;
+
+                        }
 
                     } catch (error) {
 
-                        finish(
-                            reject,
+                        cleanup();
+
+                        reject(
                             error
                         );
 
                     }
 
                 }
-            );
 
 
-            ws.addEventListener(
-                'error',
-                error => {
-
-                    finish(
-                        reject,
-                        error
-                    );
-
-                }
-            );
-
-        }
-    );
-
-}
-
-// ============================================================
-// REST — SAVE ACTIVE BOOKMARK TO LOADED COLLECTION
-// ============================================================
-
-async function saveActiveBookmark(
-    endpointId
-) {
-
-    return http(
-        'POST',
-        `/bookmarks/active/${encodeURIComponent(endpointId)}/save`
-    );
-
-}
-
-// ============================================================
-// REST — UNSAVE ACTIVE BOOKMARK
-// ============================================================
-
-async function unsaveActiveBookmark(
-    endpointId
-) {
-
-    return http(
-        'POST',
-        `/bookmarks/active/${encodeURIComponent(endpointId)}/unsave`
-    );
-
-}
-
-// ============================================================
-// WS — WAIT FOR TEST EVENTS
-// ============================================================
-
-function waitForTestFinished(
-    ws,
-    handlers = {}
-) {
-
-    return new Promise(
-        (resolve, reject) => {
-
-            function handleMessage(wsEvent) {
-
-                try {
-
-                    const message =
-                        JSON.parse(
-                            wsEvent.data
-                        );
-
-
-                    const event =
-                        message.event;
-
-
-                    if (!event) {
-                        return;
-                    }
-
-
-                    if (
-                        event.type ===
-                        'TestStarted'
-                    ) {
-
-                        if (
-                            typeof handlers.onStarted ===
-                            'function'
-                        ) {
-
-                            handlers.onStarted(
-                                event
-                            );
-
-                        }
-
-                        return;
-
-                    }
-
-
-                    if (
-                        event.type ===
-                        'TimerTick'
-                    ) {
-
-                        if (
-                            typeof handlers.onTick ===
-                            'function'
-                        ) {
-
-                            handlers.onTick(
-                                event
-                            );
-
-                        }
-
-                        return;
-
-                    }
-
-
-                    if (
-                        event.type ===
-                        'TestFinished'
-                    ) {
-
-                        cleanup();
-
-
-                        if (
-                            typeof handlers.onFinished ===
-                            'function'
-                        ) {
-
-                            handlers.onFinished(
-                                event
-                            );
-
-                        }
-
-
-                        resolve(
-                            event
-                        );
-
-
-                        return;
-
-                    }
-
-
-                    if (
-                        event.type ===
-                        'TestTimeout'
-                    ) {
-
-                        cleanup();
-
-
-                        if (
-                            typeof handlers.onTimeout ===
-                            'function'
-                        ) {
-
-                            handlers.onTimeout(
-                                event
-                            );
-
-                        }
-
-
-                        reject(
-                            new Error(
-                                'Backend reported TestTimeout'
-                            )
-                        );
-
-
-                        return;
-
-                    }
-
-
-                    if (
-                        event.type ===
-                        'Error'
-                    ) {
-
-                        cleanup();
-
-
-                        if (
-                            typeof handlers.onError ===
-                            'function'
-                        ) {
-
-                            handlers.onError(
-                                event
-                            );
-
-                        }
-
-
-                        reject(
-                            new Error(
-                                event.payload?.message ||
-                                'Backend returned Error'
-                            )
-                        );
-
-
-                        return;
-
-                    }
-
-                } catch (error) {
+                function handleError(
+                    error
+                ) {
 
                     cleanup();
 
-                    reject(error);
+                    reject(
+                        error
+                    );
 
                 }
 
-            }
+
+                function cleanup() {
+
+                    ws.removeEventListener(
+                        'message',
+                        handleMessage
+                    );
 
 
-            function handleError(error) {
+                    ws.removeEventListener(
+                        'error',
+                        handleError
+                    );
 
-                cleanup();
-
-                reject(error);
-
-            }
+                }
 
 
-            function cleanup() {
-
-                ws.removeEventListener(
+                ws.addEventListener(
                     'message',
                     handleMessage
                 );
 
-                ws.removeEventListener(
+
+                ws.addEventListener(
                     'error',
                     handleError
                 );
 
             }
+        );
+
+    }
 
 
-            ws.addEventListener(
-                'message',
-                handleMessage
+    // ============================================================
+    // TEST VIEW — REQUEST
+    // ============================================================
+
+    async function fetchRequest(
+        endpointId,
+        requestNumber
+    ) {
+
+        return http(
+            'GET',
+            `/test-view/` +
+            `${encodeURIComponent(endpointId)}` +
+            `/request/` +
+            `${encodeURIComponent(requestNumber)}`
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — RESPONSE
+    // ============================================================
+
+    async function fetchResponse(
+        endpointId,
+        requestNumber
+    ) {
+
+        return http(
+            'GET',
+            `/test-view/` +
+            `${encodeURIComponent(endpointId)}` +
+            `/response/` +
+            `${encodeURIComponent(requestNumber)}`
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — HEADERS
+    // ============================================================
+
+    async function fetchHeaders(
+        endpointId,
+        requestNumber
+    ) {
+
+        return http(
+            'GET',
+            `/test-view/` +
+            `${encodeURIComponent(endpointId)}` +
+            `/headers/` +
+            `${encodeURIComponent(requestNumber)}`
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — STOP TEST
+    // ============================================================
+
+    async function stopTest(
+        endpointId,
+        requestNumber
+    ) {
+
+        return http(
+            'POST',
+            '/test-view/stop',
+            {
+                endpoint_id:
+                    endpointId,
+
+                request_number:
+                    requestNumber
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — HISTORY
+    // ============================================================
+
+    async function saveHistory(
+        endpointId,
+        action,
+        details
+    ) {
+
+        return http(
+            'POST',
+            '/test-view/save/history',
+            {
+                endpoint_id:
+                    endpointId,
+
+                action,
+
+                details:
+                    details === undefined ||
+                    details === null
+                        ? undefined
+                        : typeof details === 'string'
+                            ? details
+                            : JSON.stringify(details)
+            }
+        );
+
+    }
+
+
+    async function clearHistory() {
+
+        return http(
+            'POST',
+            '/test-view/history/clearall'
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — LEGACY BOOKMARK
+    // ============================================================
+
+    async function saveBookmark(
+        endpointId,
+        notes
+    ) {
+
+        return http(
+            'POST',
+            '/test-view/save/bookmark',
+            {
+                endpoint_id:
+                    endpointId,
+
+                notes
+            }
+        );
+
+    }
+
+
+    async function clearBookmarks() {
+
+        return http(
+            'POST',
+            '/test-view/bookmark/clearall'
+        );
+
+    }
+
+
+    // ============================================================
+    // TEST VIEW — ACTIVE BOOKMARK
+    // ============================================================
+
+    function addActiveBookmark(
+        endpointId
+    ) {
+
+        return new Promise(
+            (
+                resolve,
+                reject
+            ) => {
+
+                const ws =
+                    createWebSocket(
+                        '/test-view/active/add'
+                    );
+
+
+                let settled =
+                    false;
+
+
+                const finish =
+                    (
+                        callback,
+                        value
+                    ) => {
+
+                        if (settled) {
+
+                            return;
+
+                        }
+
+
+                        settled =
+                            true;
+
+
+                        try {
+
+                            ws.close();
+
+                        } catch {}
+
+
+                        callback(
+                            value
+                        );
+
+                    };
+
+
+                ws.addEventListener(
+                    'open',
+                    () => {
+
+                        ws.send(
+                            JSON.stringify({
+
+                                endpoint_id:
+                                    endpointId
+
+                            })
+                        );
+
+                    }
+                );
+
+
+                ws.addEventListener(
+                    'message',
+                    event => {
+
+                        try {
+
+                            const message =
+                                JSON.parse(
+                                    event.data
+                                );
+
+
+                            if (
+                                message.type ===
+                                'error'
+                            ) {
+
+                                finish(
+                                    reject,
+                                    new Error(
+                                        message.message ||
+                                        message.payload?.message ||
+                                        'Could not add endpoint to bookmarks.'
+                                    )
+                                );
+
+
+                                return;
+
+                            }
+
+
+                            finish(
+                                resolve,
+                                message
+                            );
+
+                        } catch (error) {
+
+                            finish(
+                                reject,
+                                error
+                            );
+
+                        }
+
+                    }
+                );
+
+
+                ws.addEventListener(
+                    'error',
+                    error => {
+
+                        finish(
+                            reject,
+                            error
+                        );
+
+                    }
+                );
+
+            }
+        );
+
+    }
+
+
+    async function saveActiveBookmark(
+        endpointId
+    ) {
+
+        return http(
+            'POST',
+            `/bookmarks/active/` +
+            `${encodeURIComponent(endpointId)}/save`
+        );
+
+    }
+
+
+    async function unsaveActiveBookmark(
+        endpointId
+    ) {
+
+        return http(
+            'POST',
+            `/bookmarks/active/` +
+            `${encodeURIComponent(endpointId)}/unsave`
+        );
+
+    }
+
+
+    // ============================================================
+    // COLLECTIONS
+    // ============================================================
+
+    async function listCollections() {
+
+        return http(
+            'GET',
+            '/collections/list'
+        );
+
+    }
+
+
+    async function getCollection(
+        name
+    ) {
+
+        return http(
+            'GET',
+            `/collections/${encodeURIComponent(name)}`
+        );
+
+    }
+
+
+    async function createCollection(
+        name
+    ) {
+
+        return http(
+            'POST',
+            '/collections/create',
+            {
+                name
+            }
+        );
+
+    }
+
+
+    async function renameCollection(
+        name,
+        newName
+    ) {
+
+        return http(
+            'POST',
+            `/collections/${encodeURIComponent(name)}/rename`,
+            {
+                new_name:
+                    newName
+            }
+        );
+
+    }
+
+
+    async function deleteCollection(
+        name
+    ) {
+
+        return http(
+            'POST',
+            `/collections/${encodeURIComponent(name)}/delete`
+        );
+
+    }
+
+
+    async function listCollectionEndpoints(
+        name
+    ) {
+
+        return http(
+            'GET',
+            `/collections/${encodeURIComponent(name)}/endpoints`
+        );
+
+    }
+
+
+    async function removeEndpointFromCollection(
+        name,
+        endpointId
+    ) {
+
+        return http(
+            'POST',
+            `/collections/${encodeURIComponent(name)}/endpoints/remove`,
+            {
+                endpoint_id:
+                    endpointId
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // COLLECTIONS — LOAD INTO ACTIVE BOOKMARK WORKSPACE
+    // ============================================================
+
+    function loadCollection(
+        name
+    ) {
+
+        return new Promise(
+            (
+                resolve,
+                reject
+            ) => {
+
+                const ws =
+                    createWebSocket(
+                        `/bookmarks/` +
+                        `${encodeURIComponent(name)}/load`
+                    );
+
+
+                let settled =
+                    false;
+
+
+                const finish =
+                    (
+                        callback,
+                        value
+                    ) => {
+
+                        if (settled) {
+
+                            return;
+
+                        }
+
+
+                        settled =
+                            true;
+
+
+                        try {
+
+                            ws.close();
+
+                        } catch {}
+
+
+                        callback(
+                            value
+                        );
+
+                    };
+
+
+                ws.addEventListener(
+                    'message',
+                    event => {
+
+                        try {
+
+                            const message =
+                                JSON.parse(
+                                    event.data
+                                );
+
+
+                            if (
+                                message.type ===
+                                'error'
+                            ) {
+
+                                finish(
+                                    reject,
+                                    new Error(
+                                        message.message ||
+                                        message.payload?.message ||
+                                        'Could not load collection.'
+                                    )
+                                );
+
+
+                                return;
+
+                            }
+
+
+                            finish(
+                                resolve,
+                                message
+                            );
+
+                        } catch (error) {
+
+                            finish(
+                                reject,
+                                error
+                            );
+
+                        }
+
+                    }
+                );
+
+
+                ws.addEventListener(
+                    'error',
+                    error => {
+
+                        finish(
+                            reject,
+                            error
+                        );
+
+                    }
+                );
+
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // COLLECTION TAG ROLLUPS — GLOBAL TAGS
+    // ============================================================
+
+    async function createGlobalTag(
+        name,
+        endpointIds
+    ) {
+
+        return http(
+            'POST',
+            '/collections/tags/create',
+            {
+                name,
+
+                endpoint_ids:
+                    endpointIds
+            }
+        );
+
+    }
+
+
+    async function deleteGlobalTags(
+        names
+    ) {
+
+        return http(
+            'POST',
+            '/collections/tags/delete',
+            {
+                names
+            }
+        );
+
+    }
+
+
+    async function renameGlobalTag(
+        oldName,
+        newName
+    ) {
+
+        return http(
+            'POST',
+            '/collections/tags/rename',
+            {
+                old_name:
+                    oldName,
+
+                new_name:
+                    newName
+            }
+        );
+
+    }
+
+
+    async function listGlobalTags() {
+
+        return http(
+            'GET',
+            '/collections/tags/list'
+        );
+
+    }
+
+
+    // ============================================================
+    // COLLECTION — MEMBERSHIP TAGS
+    // ============================================================
+
+    async function addMembershipTag(
+        collectionName,
+        tag
+    ) {
+
+        return http(
+            'POST',
+            `/collections/${encodeURIComponent(collectionName)}` +
+            `/membership-tags/add`,
+            {
+                tag
+            }
+        );
+
+    }
+
+
+    async function removeMembershipTag(
+        collectionName,
+        tag
+    ) {
+
+        return http(
+            'POST',
+            `/collections/${encodeURIComponent(collectionName)}` +
+            `/membership-tags/remove`,
+            {
+                tag
+            }
+        );
+
+    }
+
+
+    async function listMembershipTags(
+        collectionName
+    ) {
+
+        return http(
+            'GET',
+            `/collections/${encodeURIComponent(collectionName)}` +
+            `/membership-tags`
+        );
+
+    }
+
+
+    async function listCollectionsByTag(
+        tagName
+    ) {
+
+        return http(
+            'GET',
+            `/collections/by-tag/${encodeURIComponent(tagName)}`
+        );
+
+    }
+
+
+    // ============================================================
+    // PER-ENDPOINT TAGS
+    // ============================================================
+
+    async function listPopularTags() {
+
+        return http(
+            'GET',
+            '/tags/popular'
+        );
+
+    }
+    async function deleteActiveBookmark(endpointId) {
+
+    return new Promise((resolve, reject) => {
+
+        const ws =
+            createWebSocket(
+                "/test-view/active/delete"
             );
 
+        let settled = false;
 
-            ws.addEventListener(
-                'error',
-                handleError
-            );
+        const finish = (
+            callback,
+            value
+        ) => {
+
+            if (settled) return;
+
+            settled = true;
+
+            try {
+                ws.close();
+            } catch {}
+
+            callback(value);
+        };
+
+        ws.addEventListener(
+            "open",
+            () => {
+
+                ws.send(
+                    JSON.stringify({
+                        endpoint_id:
+                            endpointId
+                    })
+                );
+
+            }
+        );
+
+        ws.addEventListener(
+            "message",
+            event => {
+
+                try {
+
+                    const message =
+                        JSON.parse(
+                            event.data
+                        );
+
+                    if (
+                        message.type === "error"
+                    ) {
+
+                        finish(
+                            reject,
+                            new Error(
+                                message.message ||
+                                "Bookmark deletion failed."
+                            )
+                        );
+
+                        return;
+                    }
+
+                    finish(
+                        resolve,
+                        message
+                    );
+
+                } catch (error) {
+
+                    finish(
+                        reject,
+                        error
+                    );
+
+                }
+
+            }
+        );
+
+        ws.addEventListener(
+            "error",
+            () => {
+
+                finish(
+                    reject,
+                    new Error(
+                        "Bookmark delete WebSocket failed."
+                    )
+                );
+
+            }
+        );
+
+    });
+}
+
+
+    async function listEndpointTags(
+        endpointId
+    ) {
+
+        return http(
+            'GET',
+            `/tags/${encodeURIComponent(endpointId)}`
+        );
+
+    }
+
+
+    async function addEndpointTag(
+        endpointId,
+        tag
+    ) {
+
+        return http(
+            'POST',
+            `/tags/${encodeURIComponent(endpointId)}/add`,
+            {
+                tag
+            }
+        );
+
+    }
+
+
+    async function removeEndpointTag(
+        endpointId,
+        tag
+    ) {
+
+        return http(
+            'POST',
+            `/tags/${encodeURIComponent(endpointId)}/remove`,
+            {
+                tag
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // DATA VIEW
+    // ============================================================
+
+    async function deleteDataViewFolder(
+        folder
+    ) {
+
+        return http(
+            'POST',
+            `/dataview/${encodeURIComponent(folder)}/delete`
+        );
+
+    }
+
+
+    async function mergeDataViewFolder(
+        folder
+    ) {
+
+        return http(
+            'POST',
+            `/dataview/${encodeURIComponent(folder)}/merge`
+        );
+
+    }
+
+
+    function activateDataViewFolder(
+        folder
+    ) {
+
+        return new Promise(
+            (
+                resolve,
+                reject
+            ) => {
+
+                const ws =
+                    createWebSocket(
+                        `/dataview/${encodeURIComponent(folder)}/active`
+                    );
+
+
+                let settled =
+                    false;
+
+
+                const finish =
+                    (
+                        callback,
+                        value
+                    ) => {
+
+                        if (settled) {
+
+                            return;
+
+                        }
+
+
+                        settled =
+                            true;
+
+
+                        callback(
+                            value
+                        );
+
+                    };
+
+
+                ws.addEventListener(
+                    'message',
+                    event => {
+
+                        try {
+
+                            const message =
+                                JSON.parse(
+                                    event.data
+                                );
+
+
+                            finish(
+                                resolve,
+                                message
+                            );
+
+                        } catch (error) {
+
+                            finish(
+                                reject,
+                                error
+                            );
+
+                        }
+
+                    }
+                );
+
+
+                ws.addEventListener(
+                    'error',
+                    error => {
+
+                        finish(
+                            reject,
+                            error
+                        );
+
+                    }
+                );
+
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // WEBVIEW
+    // ============================================================
+
+    async function createWebview(
+        name
+    ) {
+
+        return http(
+            'POST',
+            '/webview/create',
+            {
+                name
+            }
+        );
+
+    }
+
+
+    async function listWebviews() {
+
+        return http(
+            'GET',
+            '/webview/list'
+        );
+
+    }
+
+
+    async function createWebviewTag(
+        name,
+        endpointIds
+    ) {
+
+        const body = {
+            name
+        };
+
+
+        if (
+            endpointIds !== undefined
+        ) {
+
+            body.endpoint_ids =
+                endpointIds;
 
         }
-    );
 
-}
 
-// ============================================================
-// R2 — FETCH SAVED RESPONSE
-// ============================================================
+        return http(
+            'POST',
+            '/webview/tags/create',
+            body
+        );
 
-async function fetchResponse(
-    endpointId,
-    requestNumber
-) {
+    }
 
-    return http(
-        'GET',
-        `/test-view/` +
-        `${encodeURIComponent(endpointId)}` +
-        `/response/` +
-        `${encodeURIComponent(requestNumber)}`
-    );
 
-}
+    async function deleteWebviewTags(
+        names
+    ) {
 
-// ============================================================
-// R2 — FETCH SAVED REQUEST
-// ============================================================
+        return http(
+            'POST',
+            '/webview/tags/delete',
+            {
+                names
+            }
+        );
 
-async function fetchRequest(
-    endpointId,
-    requestNumber
-) {
+    }
 
-    return http(
-        'GET',
-        `/test-view/` +
-        `${encodeURIComponent(endpointId)}` +
-        `/request/` +
-        `${encodeURIComponent(requestNumber)}`
-    );
 
-}
+    async function renameWebviewTag(
+        oldName,
+        newName
+    ) {
 
-// ============================================================
-// R2 — FETCH SAVED HEADERS
-// ============================================================
+        return http(
+            'POST',
+            '/webview/tags/rename',
+            {
+                old_name:
+                    oldName,
 
-async function fetchHeaders(
-    endpointId,
-    requestNumber
-) {
+                new_name:
+                    newName
+            }
+        );
 
-    return http(
-        'GET',
-        `/test-view/` +
-        `${encodeURIComponent(endpointId)}` +
-        `/headers/` +
-        `${encodeURIComponent(requestNumber)}`
-    );
+    }
 
-}
 
-// ============================================================
-// STOP TEST
-// ============================================================
+    async function listWebviewTags() {
 
-async function stopTest(
-    endpointId,
-    requestNumber
-) {
+        return http(
+            'GET',
+            '/webview/tags/list'
+        );
 
-    return http(
-        'POST',
-        '/test-view/stop',
-        {
-            endpoint_id:
-                endpointId,
+    }
 
-            request_number:
-                requestNumber
+
+    // ============================================================
+    // REPO VIEW
+    // ============================================================
+
+    async function createRepoview(
+        name
+    ) {
+
+        return http(
+            'POST',
+            '/repoview/create',
+            {
+                name
+            }
+        );
+
+    }
+
+
+    async function listRepoviews() {
+
+        return http(
+            'GET',
+            '/repoview/list'
+        );
+
+    }
+
+
+    async function createRepoviewTag(
+        name,
+        endpointIds
+    ) {
+
+        const body = {
+            name
+        };
+
+
+        if (
+            endpointIds !== undefined
+        ) {
+
+            body.endpoint_ids =
+                endpointIds;
+
         }
-    );
-
-}
-
-// ============================================================
-// CLEAR HISTORY
-// ============================================================
-
-async function clearHistory() {
-
-    return http(
-        'POST',
-        '/test-view/history/clearall'
-    );
-
-}
-
-// ============================================================
-// CLEAR BOOKMARKS
-// ============================================================
-
-async function clearBookmarks() {
-
-    return http(
-        'POST',
-        '/test-view/bookmark/clearall'
-    );
-
-}
-
-// ============================================================
-// SAVE TO HISTORY
-// ============================================================
-
-async function saveHistory(
-    endpointId,
-    action,
-    details
-) {
-
-    return http(
-        'POST',
-        '/test-view/save/history',
-        {
-            endpoint_id:
-                endpointId,
-
-            action,
-
-            details:
-                details === undefined ||
-                details === null
-                    ? undefined
-                    : typeof details === 'string'
-                        ? details
-                        : JSON.stringify(details)
-        }
-    );
-
-}
-
-// ============================================================
-// SAVE BOOKMARK — LEGACY
-// ============================================================
-
-async function saveBookmark(
-    endpointId,
-    notes
-) {
-
-    return http(
-        'POST',
-        '/test-view/save/bookmark',
-        {
-            endpoint_id:
-                endpointId,
-
-            notes
-        }
-    );
-
-}
-
-// ============================================================
-// PUBLIC API
-// ============================================================
-
-window.EdmsAPI = {
-
-    // ----------------------------------------
-    // General / Endpoint
-    // ----------------------------------------
-
-    registerEndpoint,
-    registerAllEndpoints,
-
-    getTestView,
 
 
-    // ----------------------------------------
-    // Test View WebSockets
-    // ----------------------------------------
+        return http(
+            'POST',
+            '/repoview/tags/create',
+            body
+        );
 
-    connectTestView,
-    connectEndpointLoader,
-    connectBookmarkLoader,
-    connectHistoryLoader,
-
-    startTest,
-    waitForTestFinished,
-
-    addActiveBookmark,
+    }
 
 
-    // ----------------------------------------
-    // Test View REST
-    // ----------------------------------------
+    async function deleteRepoviewTags(
+        names
+    ) {
 
-    fetchResponse,
-    fetchRequest,
-    fetchHeaders,
+        return http(
+            'POST',
+            '/repoview/tags/delete',
+            {
+                names
+            }
+        );
 
-    stopTest,
-
-    clearHistory,
-    clearBookmarks,
-
-    saveHistory,
-    saveBookmark,
+    }
 
 
-    // ----------------------------------------
-    // Active Bookmarks
-    // ----------------------------------------
+    async function renameRepoviewTag(
+        oldName,
+        newName
+    ) {
 
-    saveActiveBookmark,
-    unsaveActiveBookmark,
+        return http(
+            'POST',
+            '/repoview/tags/rename',
+            {
+                old_name:
+                    oldName,
 
+                new_name:
+                    newName
+            }
+        );
 
-    // ----------------------------------------
-    // Collections
-    // ----------------------------------------
-
-    listCollections,
-    getCollection,
-    createCollection,
-    renameCollection,
-    deleteCollection,
-
-    listCollectionEndpoints,
-    removeEndpointFromCollection,
-    loadCollection,
+    }
 
 
-    // ----------------------------------------
-    // Global Tags
-    // ----------------------------------------
+    async function listRepoviewTags() {
 
-    createGlobalTag,
-    deleteGlobalTags,
-    renameGlobalTag,
-    listGlobalTags,
+        return http(
+            'GET',
+            '/repoview/tags/list'
+        );
+
+    }
 
 
-    // ----------------------------------------
-    // Membership Tags
-    // ----------------------------------------
+    // ============================================================
+    // REPO EXPORT
+    // ============================================================
 
-    addMembershipTag,
-    removeMembershipTag,
-    listMembershipTags,
-    listCollectionsByTag
+    async function exportRepo(
+        collection,
+        filename
+    ) {
 
-};
+        return http(
+            'GET',
+            `/repo/` +
+            `${encodeURIComponent(collection)}/` +
+            `${encodeURIComponent(filename)}/export`
+        );
+
+    }
+
+
+    // ============================================================
+    // REPO IMPORT
+    // ============================================================
+
+    async function importRepo(
+        collection,
+        filename
+    ) {
+
+        return http(
+            'POST',
+            `/repo/` +
+            `${encodeURIComponent(collection)}/` +
+            `${encodeURIComponent(filename)}/import`
+        );
+
+    }
+
+
+    // ============================================================
+    // LOGS
+    // ============================================================
+
+    async function getLogs() {
+
+        return http(
+            'GET',
+            '/logs'
+        );
+
+    }
+
+
+    // ============================================================
+    // DASHBOARD
+    // ============================================================
+
+    async function getDataViewDashboard() {
+
+        return http(
+            'GET',
+            '/dataview/dashboard'
+        );
+
+    }
+
+
+    async function getDashboardSnapshot() {
+
+        return http(
+            'GET',
+            '/dashboard/snapshot'
+        );
+
+    }
+
+
+    async function getDashboardSnapshotHistory() {
+
+        return http(
+            'GET',
+            '/dashboard/snapshot/history'
+        );
+
+    }
+
+
+    async function getDashboardStatic() {
+
+        return http(
+            'GET',
+            '/dashboard/static'
+        );
+
+    }
+
+
+    async function getDashboardCrudOperations() {
+
+        return http(
+            'GET',
+            '/dashboard/crud-operations'
+        );
+
+    }
+
+
+    async function refreshDashboardCrudOperations() {
+
+        return http(
+            'POST',
+            '/dashboard/crud-operations/refresh'
+        );
+
+    }
+
+
+    async function compareDashboardSnapshots(
+        from,
+        to
+    ) {
+
+        const params =
+            new URLSearchParams({
+
+                from,
+                to
+
+            });
+
+
+        return http(
+            'GET',
+            `/dashboard/compare?${params.toString()}`
+        );
+
+    }
+
+
+    // ============================================================
+    // PUBLIC API
+    // ============================================================
+
+    window.EdmsAPI = {
+
+        // ----------------------------------------
+        // General / Views
+        // ----------------------------------------
+
+        getHome,
+        getTestView,
+        getListView,
+
+
+        // ----------------------------------------
+        // Endpoints
+        // ----------------------------------------
+
+        registerEndpoint,
+        registerAllEndpoints,
+        deleteEndpoint,
+
+
+        // ----------------------------------------
+        // Test View WebSockets
+        // ----------------------------------------
+
+        connectTestView,
+        connectEndpointLoader,
+        connectBookmarkLoader,
+        connectHistoryLoader,
+
+        startTest,
+        waitForTestFinished,
+
+
+        // ----------------------------------------
+        // Test View REST
+        // ----------------------------------------
+
+        fetchRequest,
+        fetchResponse,
+        fetchHeaders,
+
+        stopTest,
+
+        saveHistory,
+        clearHistory,
+
+        saveBookmark,
+        clearBookmarks,
+
+
+        // ----------------------------------------
+        // Active Bookmarks
+        // ----------------------------------------
+
+        addActiveBookmark,
+        saveActiveBookmark,
+        unsaveActiveBookmark,
+
+
+        // ----------------------------------------
+        // Collections
+        // ----------------------------------------
+
+        listCollections,
+        getCollection,
+        createCollection,
+        renameCollection,
+        deleteCollection,
+
+        listCollectionEndpoints,
+        removeEndpointFromCollection,
+
+        loadCollection,
+
+
+        // ----------------------------------------
+        // Collection Global Tags
+        // ----------------------------------------
+
+        createGlobalTag,
+        deleteGlobalTags,
+        renameGlobalTag,
+        listGlobalTags,
+
+
+        // ----------------------------------------
+        // Collection Membership Tags
+        // ----------------------------------------
+
+        addMembershipTag,
+        removeMembershipTag,
+        listMembershipTags,
+        listCollectionsByTag,
+
+
+        // ----------------------------------------
+        // Per-Endpoint Tags
+        // ----------------------------------------
+
+        listPopularTags,
+        listEndpointTags,
+        addEndpointTag,
+        removeEndpointTag,
+        deleteActiveBookmark,
+
+
+
+        // ----------------------------------------
+        // Data View
+        // ----------------------------------------
+
+        deleteDataViewFolder,
+        mergeDataViewFolder,
+        activateDataViewFolder,
+
+
+        // ----------------------------------------
+        // Webview
+        // ----------------------------------------
+
+        createWebview,
+        listWebviews,
+
+        createWebviewTag,
+        deleteWebviewTags,
+        renameWebviewTag,
+        listWebviewTags,
+
+
+        // ----------------------------------------
+        // Repo View
+        // ----------------------------------------
+
+        createRepoview,
+        listRepoviews,
+
+        createRepoviewTag,
+        deleteRepoviewTags,
+        renameRepoviewTag,
+        listRepoviewTags,
+
+
+        // ----------------------------------------
+        // Repo Import / Export
+        // ----------------------------------------
+
+        exportRepo,
+        importRepo,
+
+
+        // ----------------------------------------
+        // Logs
+        // ----------------------------------------
+
+        getLogs,
+
+
+        // ----------------------------------------
+        // Dashboard
+        // ----------------------------------------
+
+        getDataViewDashboard,
+        getDashboardSnapshot,
+        getDashboardSnapshotHistory,
+        getDashboardStatic,
+        getDashboardCrudOperations,
+        refreshDashboardCrudOperations,
+        compareDashboardSnapshots
+
+    };
 
 })();
