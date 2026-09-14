@@ -1,4 +1,4 @@
-//! remove_url — URL / Address Prefix Stripper (Task 6)
+//! remove_url — URL / Address Prefix Stripper
 //!
 //! Provides utilities to strip scheme, host, and port from endpoints,
 //! leaving only the relative path (with query/fragment if present).

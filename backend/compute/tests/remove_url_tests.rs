@@ -1,4 +1,4 @@
-//! Tests for URL / Address Prefix Stripper (Task 6)
+//! Tests for URL / Address Prefix Stripper
 
 use compute::remove_url::{
     apply_remove_url_prefix, strip_url_prefix, RemoveUrlRequest, TargetSelection,

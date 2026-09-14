@@ -653,7 +653,7 @@ pub async fn tagops_rename_inner(req: RenameTagRequest) -> Result<String, String
     .map_err(|e| e.to_string())?
 }
 
-// ── REMOVE URL PREFIX (Task 6) ────────────────────────────────────────────────
+// ── REMOVE URL PREFIX ─────────────────────────────────────────────────────────
 
 pub use crate::remove_url::{
     apply_remove_url_prefix, strip_url_prefix, RemoveUrlRequest, RemoveUrlSummary, TargetSelection,
@@ -663,6 +663,91 @@ pub async fn remove_url_prefix_inner(req: RemoveUrlRequest) -> Result<String, St
     tokio::task::spawn_blocking(move || {
         let summary = apply_remove_url_prefix(req).map_err(|e| e.to_string())?;
         serde_json::to_string(&summary).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── TABLE VIEW & VALIDATION ──────────────────────────────────────────────────
+
+pub use crate::table_view::{
+    check_item_format, move_item_to_view, scan_imports_table, takeout_item, MoveResult, TableItem,
+    TableViewResponse, TakeoutResult, ViewPurpose,
+};
+pub use crate::validate::{
+    validate_bookmark_format, validate_webview_format, ComponentStatus, ValidationReport,
+};
+
+#[derive(Deserialize)]
+pub struct TableViewScanRequest {
+    pub imports_dir: String,
+}
+
+#[derive(Deserialize)]
+pub struct TableViewFormatCheckRequest {
+    pub item_path: String,
+    pub purpose: ViewPurpose,
+}
+
+#[derive(Deserialize)]
+pub struct TableViewMoveRequest {
+    pub storage_root: String,
+    pub item_path: String,
+    pub purpose: ViewPurpose,
+}
+
+#[derive(Deserialize)]
+pub struct TableViewTakeoutRequest {
+    pub source_path: String,
+    pub dest_name: String,
+    pub storage_root: String,
+    pub overwrite: bool,
+}
+
+pub async fn table_view_scan_inner(req: TableViewScanRequest) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let res = scan_imports_table(Path::new(&req.imports_dir));
+        serde_json::to_string(&res).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+pub async fn table_view_format_check_inner(
+    req: TableViewFormatCheckRequest,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let report = check_item_format(Path::new(&req.item_path), req.purpose);
+        serde_json::to_string(&report).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+pub async fn table_view_move_inner(req: TableViewMoveRequest) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let res = move_item_to_view(
+            Path::new(&req.storage_root),
+            Path::new(&req.item_path),
+            req.purpose,
+        )
+        .map_err(|e| e.to_string())?;
+        serde_json::to_string(&res).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+pub async fn table_view_takeout_inner(req: TableViewTakeoutRequest) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let res = takeout_item(
+            Path::new(&req.source_path),
+            &req.dest_name,
+            Path::new(&req.storage_root),
+            req.overwrite,
+        )
+        .map_err(|e| e.to_string())?;
+        serde_json::to_string(&res).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?

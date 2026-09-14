@@ -7,3 +7,5 @@ pub mod endpoint_writer;
 pub mod tagops;
 pub mod eid;
 pub mod remove_url;
+pub mod validate;
+pub mod table_view;

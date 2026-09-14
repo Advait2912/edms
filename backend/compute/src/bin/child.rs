@@ -21,6 +21,10 @@ use compute::api::handlers::{
     tagops_merge_inner, tagops_create_inner, tagops_bulk_add_inner,
     tagops_bulk_remove_inner, tagops_rename_inner,
     remove_url_prefix_inner, RemoveUrlRequest,
+    table_view_scan_inner, TableViewScanRequest,
+    table_view_format_check_inner, TableViewFormatCheckRequest,
+    table_view_move_inner, TableViewMoveRequest,
+    table_view_takeout_inner, TableViewTakeoutRequest,
 };
 use compute::tagops::{
     MergeRequest as TagMergeRequest, CreateFromTagsRequest,
@@ -188,6 +192,22 @@ async fn dispatch(task: &str, payload: Value) -> (bool, Value, Option<String>) {
 
         "remove_url_prefix" => {
             run(payload, |p: RemoveUrlRequest| remove_url_prefix_inner(p)).await
+        }
+
+        "table_view_scan" => {
+            run(payload, |p: TableViewScanRequest| table_view_scan_inner(p)).await
+        }
+
+        "table_view_format_check" => {
+            run(payload, |p: TableViewFormatCheckRequest| table_view_format_check_inner(p)).await
+        }
+
+        "table_view_move" => {
+            run(payload, |p: TableViewMoveRequest| table_view_move_inner(p)).await
+        }
+
+        "table_view_takeout" => {
+            run(payload, |p: TableViewTakeoutRequest| table_view_takeout_inner(p)).await
         }
 
         unknown => {
