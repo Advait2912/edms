@@ -92,7 +92,20 @@ async fn main() {
     let started_at = Instant::now();
 
     // 4. Dispatch to the right inner handler
-    let (success, result, error) = dispatch(&task, request.payload).await;
+    let view_type = request
+        .payload
+        .get("view_type")
+        .or_else(|| request.payload.get("ViewType"))
+        .cloned();
+
+    let (success, mut result, error) = dispatch(&task, request.payload).await;
+
+    // Preserve ViewType in callback result if specified in request payload
+    if let Some(vt) = view_type {
+        if let Some(obj) = result.as_object_mut() {
+            obj.insert("view_type".to_string(), vt);
+        }
+    }
 
     let elapsed_ms = started_at.elapsed().as_millis();
 

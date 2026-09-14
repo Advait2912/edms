@@ -39,7 +39,7 @@ use handlers::{
         save_bookmark, save_history, stop, ws_add_from_history_to_bookmark,
         ws_delete_from_bookmark, ws_load_bookmarks, ws_load_endpoints, ws_load_history, ws_run,
     },
-    view::{home, list_view, test_view},
+    view::{home, list_view, test_view, trigger_view_refresh},
     view_catalog::{
         create_collection_entry, create_repoview_entry,
         create_webview_entry, delete_collection_entry, get_collection_entry,
@@ -150,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/endpoints/:endpoint_id/delete", post(delete_endpoint))
         .route("/test-view", get(test_view))
         .route("/list-view", get(list_view))
+        .route("/view/refresh", post(trigger_view_refresh))
         .route("/test-view/endpoints/load", get(ws_load_endpoints))
         .route("/test-view/bookmarks/load", get(ws_load_bookmarks))
         .route("/test-view/history/load", get(ws_load_history))
