@@ -652,3 +652,18 @@ pub async fn tagops_rename_inner(req: RenameTagRequest) -> Result<String, String
     .await
     .map_err(|e| e.to_string())?
 }
+
+// ── REMOVE URL PREFIX (Task 6) ────────────────────────────────────────────────
+
+pub use crate::remove_url::{
+    apply_remove_url_prefix, strip_url_prefix, RemoveUrlRequest, RemoveUrlSummary, TargetSelection,
+};
+
+pub async fn remove_url_prefix_inner(req: RemoveUrlRequest) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let summary = apply_remove_url_prefix(req).map_err(|e| e.to_string())?;
+        serde_json::to_string(&summary).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

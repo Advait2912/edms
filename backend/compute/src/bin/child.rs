@@ -20,6 +20,7 @@ use compute::api::handlers::{
     write_endpoint_inner, write_headers_inner, write_request_inner, write_response_inner,
     tagops_merge_inner, tagops_create_inner, tagops_bulk_add_inner,
     tagops_bulk_remove_inner, tagops_rename_inner,
+    remove_url_prefix_inner, RemoveUrlRequest,
 };
 use compute::tagops::{
     MergeRequest as TagMergeRequest, CreateFromTagsRequest,
@@ -183,6 +184,10 @@ async fn dispatch(task: &str, payload: Value) -> (bool, Value, Option<String>) {
 
         "tagops_rename" => {
             run(payload, |p: RenameTagRequest| tagops_rename_inner(p)).await
+        }
+
+        "remove_url_prefix" => {
+            run(payload, |p: RemoveUrlRequest| remove_url_prefix_inner(p)).await
         }
 
         unknown => {
