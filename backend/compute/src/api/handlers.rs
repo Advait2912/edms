@@ -752,3 +752,49 @@ pub async fn table_view_takeout_inner(req: TableViewTakeoutRequest) -> Result<St
     .await
     .map_err(|e| e.to_string())?
 }
+
+// ── ORPHANED EID AUDIT & PURGE ───────────────────────────────────────────────
+
+pub use crate::audit_orphanedEIDs::{
+    execute_purge, generate_audit_report, AuditReport, AuditRequest, PurgeRequest, PurgeResult,
+};
+
+pub async fn audit_orphaned_eids_inner(req: AuditRequest) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let report = generate_audit_report(
+            Path::new(&req.db_path),
+            Path::new(&req.eqp_dir),
+            Path::new(&req.output_path),
+        )
+        .map_err(|e| e.to_string())?;
+        serde_json::to_string(&report).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+pub async fn purge_orphaned_eids_inner(req: PurgeRequest) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let report = if let Some(ref path_str) = req.audit_report_path {
+            let f = std::fs::File::open(path_str).map_err(|e| e.to_string())?;
+            serde_json::from_reader(f).map_err(|e| e.to_string())?
+        } else {
+            generate_audit_report(
+                Path::new(&req.db_path),
+                Path::new(&req.eqp_dir),
+                Path::new("temp/audit.json"),
+            )
+            .map_err(|e| e.to_string())?
+        };
+
+        let result = execute_purge(
+            Path::new(&req.db_path),
+            Path::new(&req.eqp_dir),
+            &report,
+        )
+        .map_err(|e| e.to_string())?;
+        serde_json::to_string(&result).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

@@ -25,6 +25,8 @@ use compute::api::handlers::{
     table_view_format_check_inner, TableViewFormatCheckRequest,
     table_view_move_inner, TableViewMoveRequest,
     table_view_takeout_inner, TableViewTakeoutRequest,
+    audit_orphaned_eids_inner, AuditRequest,
+    purge_orphaned_eids_inner, PurgeRequest,
 };
 use compute::tagops::{
     MergeRequest as TagMergeRequest, CreateFromTagsRequest,
@@ -208,6 +210,14 @@ async fn dispatch(task: &str, payload: Value) -> (bool, Value, Option<String>) {
 
         "table_view_takeout" => {
             run(payload, |p: TableViewTakeoutRequest| table_view_takeout_inner(p)).await
+        }
+
+        "audit_orphaned_eids" => {
+            run(payload, |p: AuditRequest| audit_orphaned_eids_inner(p)).await
+        }
+
+        "purge_orphaned_eids" => {
+            run(payload, |p: PurgeRequest| purge_orphaned_eids_inner(p)).await
         }
 
         unknown => {
