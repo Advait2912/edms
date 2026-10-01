@@ -13,6 +13,17 @@ A standalone benchmarking and load-testing suite designed for EDMS (Endpoint Dat
 
 ---
 
+## How to Clone This Branch
+
+To clone **only** this standalone benchmarking branch into its own directory:
+
+```bash
+git clone -b benchmarks https://github.com/Advait2912/edms.git edms-benchmarks
+cd edms-benchmarks
+```
+
+---
+
 ## 1. Synthetic Data Generator (`synthetic_data_gen.py`)
 
 Generates realistic mock datasets across arbitrary scales (e.g., 1K, 5K, 10K, 50K, 100K endpoints) with strict structural compliance to the EDMS schema.
@@ -36,7 +47,7 @@ Generates realistic mock datasets across arbitrary scales (e.g., 1K, 5K, 10K, 50
 python synthetic_data_gen.py
 
 # Custom scale: generate 10,000 endpoints with mock physical payload files
-python synthetic_data_gen.py --count 10000 --with-qp --output-dir ./data --db-name edms.db
+python synthetic_data_gen.py --count 10000 --with-qp --output-dir ./data --db-name test.db
 
 # Heavy stress test: generate 100,000 endpoints (database only)
 python synthetic_data_gen.py --count 100000 --output-dir ./data --db-name edms_100k.db
@@ -51,8 +62,8 @@ python synthetic_data_gen.py --count 100000 --output-dir ./data --db-name edms_1
 | Argument | Default | What It Controls | Example of Changing It |
 | :--- | :--- | :--- | :--- |
 | `--count` | `5000` | Total number of endpoints created. | `--count 20000` (Generates 20,000 endpoints) |
-| `--output-dir` | `./benchmarks/data` | Where the database and mock folders will be written. | `--output-dir "C:/edms_data"` or `--output-dir /tmp/data` |
-| `--db-name` | `edms_synthetic.db` | The filename of the SQLite database. | `--db-name production_mock.db` |
+| `--output-dir` | `./benchmarks/data` | Where the database and mock folders will be written. | `--output-dir "C:/edms_data"` or `--output-dir ./data` |
+| `--db-name` | `edms_synthetic.db` | The filename of the SQLite database. | `--db-name test.db` |
 | `--with-qp` | *Disabled* | When included, generates physical `globalEQPData/<EID>/` JSON mock files (`request`, `response`, `headers`). Omit this flag for fast, database-only benchmarks. | Add `--with-qp` to command |
 
 ---
@@ -195,31 +206,62 @@ Open `load_tester/main.go` to adjust which endpoints are hit and how:
 
 ---
 
-## 3. End-to-End Benchmark Workflow
+## 3. End-to-End Workflow: How to Benchmark EDMS
 
-Here is how to run a complete benchmark cycle from scratch:
+Here is the exact step-by-step procedure to benchmark any EDMS instance:
 
-### Step 1: Generate Test Dataset
+### Step 1: Generate the Test Dataset
+From this `edms-benchmarks` directory, generate an SQLite test database of your desired scale (e.g., 10,000 endpoints):
+
 ```bash
 python synthetic_data_gen.py --count 10000 --output-dir ./data --db-name test.db
 ```
+*This produces `./data/test.db` with 10,000 populated endpoints, bookmarks, tags, and collections.*
 
-### Step 2: Start the EDMS Webserver
-Run your EDMS webserver configured to use the generated `test.db` (listening on port 3000):
+---
+
+### Step 2: Start the EDMS Webserver with the Benchmark Database
+
+In your EDMS repository (where the backend code lives), point the webserver to the generated `test.db`:
+
+#### Method A: Using Environment Variable (Recommended)
+The EDMS webserver natively checks the `EDMS_DB_PATH` environment variable:
+
+- **On Linux / macOS / WSL**:
+  ```bash
+  export EDMS_DB_PATH="/absolute/path/to/edms-benchmarks/data/test.db"
+  cargo run --bin edms-webserver
+  ```
+- **On Windows (PowerShell)**:
+  ```powershell
+  $env:EDMS_DB_PATH="C:\path\to\edms-benchmarks\data\test.db"
+  cargo run --bin edms-webserver
+  ```
+
+#### Method B: Replacing the Default Database
+Copy the generated database file to replace `edms.db` in your backend directory:
 ```bash
-# In your main backend directory:
+cp /path/to/edms-benchmarks/data/test.db /path/to/edms/backend/webserver/edms.db
 cargo run --bin edms-webserver
 ```
 
-### Step 3: Run the Load Tester
-In a separate terminal:
+*(By default, the server starts listening on `http://localhost:3000`)*
+
+---
+
+### Step 3: Run the Load Tester Against the Server
+
+Return to this `edms-benchmarks` directory and run the load tester against your running EDMS server:
+
 ```bash
 cd load_tester
 go run main.go -target "http://localhost:3000" -concurrency 20 -requests 5000 -output-csv 10k_benchmark.csv
 ```
 
+---
+
 ### Step 4: Analyze Output & Metrics
-- **Terminal Progress**: Live updates print every 2 seconds displaying current throughput (`req/s`) and peak memory usage (`MB`).
-- **Final Summary**: Prints a detailed latency distribution table (Min, Avg, p50, p90, p95, p99, Max) and HTTP status breakdown.
-- **CSV Output**: Check `10k_benchmark.csv` for the exported data.
-- **Prometheus**: If running a longer benchmark, monitor `http://localhost:9100/metrics` or attach a Prometheus scraper.
+- **Live Console Output**: Prints requests processed, real-time throughput (`req/s`), and peak memory allocations (`MB`) every 2 seconds.
+- **Latency Distribution Table**: Summarizes Min, Average, Median (p50), 90th percentile (p90), 95th percentile (p95), 99th percentile (p99), and Max latency upon completion.
+- **CSV Output File**: Open `10k_benchmark.csv` for raw, machine-readable performance metrics.
+- **Prometheus Metrics**: While running, scrape `http://localhost:9100/metrics` to integrate with Prometheus or Grafana dashboards.
